@@ -64,8 +64,10 @@
         <a href="{% url 'user_manage' %}" class="btn">全部用户</a>
         <a href="{% url 'user_export_ledger' %}?{{ request.GET.urlencode }}" class="btn btn-success">导出用户台账</a>
         
+        <!-- 2. 搜索框 -->
         <form method="get" style="display: inline-block; margin-left: 20px;">
             <input type="text" name="keyword" placeholder="输入姓名/编号搜索" style="width: 300px;" value="{{ keyword|default:'' }}">
+            <!-- 隐藏字段：保留类型筛选状态 -->
             {% if user_type %}
             <input type="hidden" name="user_type" value="{{ user_type }}">
             {% endif %}
@@ -73,6 +75,7 @@
         </form>
     </div>
 
+    <!-- 3. 新增用户表单（折叠/展开，可选） -->
     <div style="margin: 20px 0; padding: 15px; border: 1px solid #eee; border-radius: 5px;">
         <h3 style="margin-top: 0;">新增用户</h3>
         <form method="post">
@@ -107,6 +110,7 @@
         </form>
     </div>
 
+    <!-- 4. 用户列表 -->
     <table>
         <thead>
             <tr>
@@ -147,12 +151,15 @@
                     {% endif %}
                 </td>
                 <td>
+                    <!-- 编辑按钮 -->
                     <a href="{% url 'user_edit' pk=user.pk %}" class="btn btn-primary">查看详情/编辑</a>
+                    <!-- 状态切换按钮（禁用/启用） -->
                     {% if user.is_active %}
                     <a href="{% url 'user_toggle_status' pk=user.pk %}" class="btn btn-danger" onclick="return confirm('确定要禁用用户【{{ user.name }}】吗？')">禁用</a>
                     {% else %}
                     <a href="{% url 'user_toggle_status' pk=user.pk %}" class="btn btn-success" onclick="return confirm('确定要启用用户【{{ user.name }}】吗？')">启用</a>
                     {% endif %}
+                    <!-- 删除按钮 -->
                     <a href="{% url 'user_delete' pk=user.pk %}" class="btn btn-warning" onclick="return confirm('确定要删除用户【{{ user.name }}】吗？删除后数据不可恢复！')">删除</a>
                 </td>
             </tr>

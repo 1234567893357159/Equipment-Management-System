@@ -6,14 +6,12 @@ from devices.models import Device
 
 # 预约申请模型
 class Booking(models.Model):
-    # 审批状态（整合了指导教师审批逻辑，适配多级审批）
+    # 审批状态（适配多级审批）
     APPROVAL_STATUS = (
-        ('teacher_pending', '待指导教师审批'),  # 你的新增功能
         ('pending', '待管理员审批'),
         ('admin_approved', '管理员已批准（待负责人审批）'),
         ('manager_approved', '全部审批通过'),
         ('admin_rejected', '管理员已拒绝'),
-        ('teacher_rejected', '指导教师已拒绝'), # 你的新增功能
         ('manager_rejected', '负责人已拒绝'),
         ('cancelled', '用户已撤销'),
     )
@@ -25,8 +23,7 @@ class Booking(models.Model):
     time_slot = models.CharField(max_length=20, verbose_name='预约时段')
     purpose = models.TextField(verbose_name='借用用途', blank=True, null=True)
     teacher_id = models.CharField(max_length=20, blank=True, null=True, verbose_name='指导教师编号')
-    # 默认状态建议设为 'teacher_pending' 以开启三级审批流
-    status = models.CharField(max_length=20, choices=APPROVAL_STATUS, default='teacher_pending', verbose_name='审批状态')
+    status = models.CharField(max_length=20, choices=APPROVAL_STATUS, default='pending', verbose_name='审批状态')
     create_time = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     update_time = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
@@ -45,12 +42,7 @@ class ApprovalRecord(models.Model):
     )
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, verbose_name='关联预约')
     approver = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='审批人')
-    # 审批级别中保留了 'teacher' 选项
-    approval_level = models.CharField(
-        max_length=20, 
-        choices=[('teacher', '指导教师'), ('admin', '管理员'), ('manager', '负责人')], 
-        verbose_name='审批级别'
-    )
+    approval_level = models.CharField(max_length=20, choices=[('admin', '管理员'), ('manager', '负责人')], verbose_name='审批级别')
     action = models.CharField(max_length=10, choices=APPROVAL_ACTION, verbose_name='审批操作')
     comment = models.TextField(blank=True, null=True, verbose_name='审批备注')
     approval_time = models.DateTimeField(auto_now_add=True, verbose_name='审批时间')

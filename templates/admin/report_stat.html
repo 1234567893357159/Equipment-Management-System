@@ -31,83 +31,106 @@
 <div class="card">
     <h2>设备使用报表统计</h2>
     
+    <!-- 自动生成说明 -->
     <div style="margin-bottom: 20px; padding: 15px; background-color: #e7f3ff; border-left: 4px solid #3498db; border-radius: 4px;">
-        <h4 style="margin-top: 0; color: #2980b9;">📅 报表系统说明</h4>
-        <p style="margin: 5px 0; color: #555; line-height: 1.6; font-size: 14px;">
-            • <strong>系统自动生成</strong>：周报表（周一凌晨）、月报表（每月1号）、年报表（1月1号）定时生成。<br>
-            • <strong>手动即时生成</strong>：您可以根据需要，手动生成指定日期或“自定义时间段”的统计报表。<br>
-            • <strong>报表清理</strong>：系统会自动清理超过30天的历史报表。
+        <h4 style="margin-top: 0; color: #2980b9;">📅 自动生成说明</h4>
+        <p style="margin: 5px 0; color: #555; line-height: 1.6;">
+            • <strong>系统会自动生成报表</strong>：
+              <span style="margin-left: 20px;">- 周报表：每周一凌晨2点生成上一周报表</span><br>
+              <span style="margin-left: 20px;">- 月报表：每月1号凌晨2点生成上一月报表</span><br>
+              <span style="margin-left: 20px;">- 年报表：每年1月1号凌晨2点生成上一年报表</span><br>
+            • <strong>报表自动清理</strong>：超过30天的报表会被自动清理（每天凌晨3点执行）<br>
+            • <strong>手动生成</strong>：您可以手动生成指定时间段的报表（支持自定义起始和结束日期）
         </p>
     </div>
-
+    
+    <!-- 手动生成报表表单 -->
     <div style="margin-bottom: 30px; padding: 20px; background-color: #f5f5f5; border-radius: 5px;">
-        <h3 style="margin-bottom: 15px;">🔧 生成与操作</h3>
+        <h3 style="margin-bottom: 15px;">🔧 手动生成报表</h3>
+        <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+            提示：如果系统已自动生成该时间段的报表（周/月/年），系统会提示并直接加载已存在的报表。自定义时间段报表可重复生成。
+        </p>
         <form method="post" id="report_form">
             {% csrf_token %}
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; align-items: end;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
                 <div>
                     <label style="display: block; margin-bottom: 5px;">报表类型：</label>
-                    <select name="report_type" id="report_type_select" class="form-control" style="width: 100%;">
+                    <select name="report_type" class="form-control" required style="width: 100%;" id="report_type_select">
                         <option value="week">周报表</option>
-                        <option value="month" selected>月报表</option>
+                        <option value="month">月报表</option>
                         <option value="year">年报表</option>
-                        <option value="custom">自定义时间段</option>
+                        <option value="custom">自定义时间段报表</option>
                     </select>
                 </div>
                 <div id="date_input_div">
-                    <label style="display: block; margin-bottom: 5px;">统计日期/月份：</label>
-                    <input type="month" name="date_input" id="date_input" class="form-control" style="width: 100%;" value="2025-12">
+                    <label style="display: block; margin-bottom: 5px;">日期：</label>
+                    <input type="text" name="date_input" class="form-control" 
+                           placeholder="周报表: YYYY-MM-DD, 月报表: YYYY-MM, 年报表: YYYY"
+                           style="width: 100%;" id="date_input">
+                    <small style="color: #666; display: block; margin-top: 5px;" id="date_hint">
+                        周报表：选择日期（如 2025-01-10）<br>
+                        月报表：选择月份（如 2025-01）<br>
+                        年报表：输入年份（如 2025）
+                    </small>
                 </div>
                 <div id="start_date_div" style="display: none;">
                     <label style="display: block; margin-bottom: 5px;">起始日期：</label>
-                    <input type="date" name="start_date" id="start_date" class="form-control" style="width: 100%;">
+                    <input type="date" name="start_date" class="form-control" style="width: 100%;" id="start_date">
                 </div>
                 <div id="end_date_div" style="display: none;">
                     <label style="display: block; margin-bottom: 5px;">结束日期：</label>
-                    <input type="date" name="end_date" id="end_date" class="form-control" style="width: 100%;">
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button type="submit" name="generate" class="btn btn-primary">生成报表</button>
-                    <button type="button" class="btn">打印</button>
+                    <input type="date" name="end_date" class="form-control" style="width: 100%;" id="end_date">
                 </div>
             </div>
-            <small style="color: #666; display: block; margin-top: 8px;" id="date_hint">月报表请选择对应月份</small>
+            <div>
+                <button type="submit" name="generate" class="btn btn-primary">生成报表</button>
+            </div>
         </form>
     </div>
 
+    <!-- 已生成报表列表 -->
     <div style="margin-bottom: 30px;">
-        <h3>📋 历史报表记录</h3>
+        <h3>📋 已生成报表列表</h3>
+        <p style="color: #666; margin-bottom: 10px; font-size: 14px;">
+            共 {{ reports|length }} 条报表记录（仅显示最近20条，超过30天的报表会自动清理）
+        </p>
         {% if reports %}
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                <thead>
-                    <tr style="background-color: #34495e; color: white;">
-                        <th style="padding: 10px; border: 1px solid #ddd;">类型</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">名称</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">统计周期</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">预约总数</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">生成人/方式</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">操作</th>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>报表类型</th>
+                        <th>报表名称</th>
+                        <th>统计时间</th>
+                        <th>总预约次数</th>
+                        <th>总收入（元）</th>
+                        <th>生成时间</th>
+                        <th>生成方式</th>
+                        <th>生成人</th>
+                        <th>操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for report in reports %}
                     <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ report.get_report_type_display }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ report.report_name }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ report.start_date|date:"Y-m-d" }} ~ {{ report.end_date|date:"Y-m-d" }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{{ report.total_bookings }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                        <td>{{ report.get_report_type_display }}</td>
+                        <td>{{ report.report_name }}</td>
+                        <td>{{ report.start_date|date:"Y-m-d" }} 至 {{ report.end_date|date:"Y-m-d" }}</td>
+                        <td>{{ report.total_bookings }}</td>
+                        <td>{{ report.total_revenue }}</td>
+                        <td>{{ report.generated_at|date:"Y-m-d H:i" }}</td>
+                        <td>
                             {% if report.generated_by %}
-                                {{ report.generated_by.username }} (手动)
+                                <span style="color: #3498db; font-weight: 500;">手动生成</span>
                             {% else %}
-                                <span style="color: #2ecc71;">🔄 系统自动</span>
+                                <span style="color: #2ecc71; font-weight: 500;">🔄 自动生成</span>
                             {% endif %}
                         </td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                            <div style="display: flex; gap: 5px; justify-content: center;">
-                                <a href="?view={{ report.id }}" class="btn btn-info" style="padding: 2px 8px; font-size: 12px; white-space: nowrap;">查看详情</a>
-                                <a href="{% url 'export_report_csv' report_id=report.id %}" class="btn btn-success" style="padding: 2px 8px; font-size: 12px; white-space: nowrap;">导出</a>
+                        <td>{{ report.generated_by.username|default:"系统自动" }}</td>
+                        <td style="min-width: 150px;">
+                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                <a href="?view={{ report.id }}" class="btn btn-info" style="white-space: nowrap; flex-shrink: 0;">查看详情</a>
+                                <a href="{% url 'export_report_csv' report_id=report.id %}" class="btn btn-success" style="white-space: nowrap; flex-shrink: 0;">导出</a>
                             </div>
                         </td>
                     </tr>
@@ -116,17 +139,16 @@
             </table>
         </div>
         {% else %}
-        <p style="color: #999; text-align: center; padding: 20px;">暂无报表记录，请点击上方按钮生成。</p>
+        <p style="color: #666;">暂无已生成的报表</p>
         {% endif %}
     </div>
 
-    <hr style="border: 0; border-top: 1px solid #eee; margin: 40px 0;">
-
+    <!-- 报表详情展示 -->
     {% if current_report %}
     <div style="margin-top: 30px; padding: 20px; background-color: #f9f9f9; border-radius: 5px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-            <h3 style="margin: 0; color: #2c3e50;">{{ current_report.report_name }} 详情</h3>
-            <a href="{% url 'export_report_csv' report_id=current_report.id %}" class="btn btn-success" style="white-space: nowrap;">📥 导出此报表</a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; flex: 1; min-width: 200px;">{{ current_report.report_name }}</h3>
+            <a href="{% url 'export_report_csv' report_id=current_report.id %}" class="btn btn-success" style="white-space: nowrap; flex-shrink: 0;">📥 导出报表</a>
         </div>
         <p style="color: #666; margin-bottom: 20px;">
             统计时间：{{ current_report.start_date|date:"Y年m月d日" }} 至 {{ current_report.end_date|date:"Y年m月d日" }} | 
@@ -134,97 +156,158 @@
         </p>
         
         {% with data=current_report.get_report_data %}
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0;">
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
-                <div style="color: #7f8c8d; font-size: 12px;">总预约次数</div>
+        <!-- 汇总统计 -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <div style="font-size: 24px; font-weight: bold; color: #3498db;">{{ data.summary.total_bookings }}</div>
+                <div style="color: #666;">总预约次数</div>
             </div>
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
-                <div style="color: #7f8c8d; font-size: 12px;">已通过审批</div>
+            <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <div style="font-size: 24px; font-weight: bold; color: #2ecc71;">{{ data.summary.approved_count }}</div>
+                <div style="color: #666;">已审批通过</div>
             </div>
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
-                <div style="color: #7f8c8d; font-size: 12px;">统计设备数</div>
+            <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <div style="font-size: 24px; font-weight: bold; color: #e74c3c;">{{ data.summary.total_revenue|floatformat:2 }}</div>
+                <div style="color: #666;">总收入（元）</div>
+            </div>
+            <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <div style="font-size: 24px; font-weight: bold; color: #f39c12;">{{ data.summary.total_devices }}</div>
-            </div>
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
-                <div style="color: #7f8c8d; font-size: 12px;">校外总收入</div>
-                <div style="font-size: 24px; font-weight: bold; color: #e74c3c;">￥{{ data.summary.total_revenue|floatformat:2 }}</div>
+                <div style="color: #666;">设备总数</div>
             </div>
         </div>
 
-        <div style="display: flex; gap: 20px; margin: 25px 0;">
-            <div style="flex: 1; height: 260px; background-color: #fcfcfc; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999;">
-                [图表] 设备使用率走势 (基于数据渲染)
-            </div>
-            <div style="flex: 1; height: 260px; background-color: #fcfcfc; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999;">
-                [图表] 用户类型分布占比 (基于数据渲染)
-            </div>
+        <!-- 设备使用统计表 -->
+        <h4 style="margin-top: 30px; margin-bottom: 15px;">设备使用统计</h4>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>设备编号</th>
+                        <th>设备型号</th>
+                        <th>预约次数</th>
+                        <th>使用时长（小时）</th>
+                        <th>使用率（%）</th>
+                        <th>校外收费（元）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in data.device_usage %}
+                    <tr>
+                        <td>{{ device.device_code }}</td>
+                        <td>{{ device.device_model }}</td>
+                        <td>{{ device.booking_count }}</td>
+                        <td>{{ device.usage_hours }}</td>
+                        <td>{{ device.usage_rate }}%</td>
+                        <td>{{ device.revenue|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center">暂无设备使用数据</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="padding: 10px; border: 1px solid #ddd;">设备编号</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">型号</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">预约次数</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">使用时长(h)</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">使用率</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">校外收费(元)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in data.device_usage %}
-                <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ item.device_code }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">{{ item.device_model }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{{ item.booking_count }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{{ item.usage_hours }}</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{{ item.usage_rate }}%</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">{{ item.revenue|floatformat:2 }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <!-- 用户类型统计 -->
+        <h4 style="margin-top: 30px; margin-bottom: 15px;">用户类型统计</h4>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>用户类型</th>
+                        <th>预约次数</th>
+                        <th>用户数量</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in data.user_type_stats %}
+                    <tr>
+                        <td>
+                            {% if stat.applicant__user_type == 'student' %}校内学生
+                            {% elif stat.applicant__user_type == 'teacher' %}校内教师
+                            {% elif stat.applicant__user_type == 'external' %}校外人员
+                            {% else %}{{ stat.applicant__user_type }}{% endif %}
+                        </td>
+                        <td>{{ stat.booking_count }}</td>
+                        <td>{{ stat.user_count }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center">暂无用户类型数据</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% endwith %}
     </div>
-    {% else %}
-    <div style="text-align: center; color: #999; padding: 40px;">
-        <p>请从上方列表中选择报表查看详情，或填写日期生成新报表。</p>
-    </div>
     {% endif %}
-
-    <script>
-        document.getElementById('report_type_select').addEventListener('change', function() {
-            const type = this.value;
-            const dateDiv = document.getElementById('date_input_div');
-            const startDiv = document.getElementById('start_date_div');
-            const endDiv = document.getElementById('end_date_div');
-            const hint = document.getElementById('date_hint');
-            const dateInput = document.getElementById('date_input');
-
-            if (type === 'custom') {
-                dateDiv.style.display = 'none';
-                startDiv.style.display = 'block';
-                endDiv.style.display = 'block';
-                hint.innerText = '请选择自定义时间段的起止日期';
-            } else {
-                dateDiv.style.display = 'block';
-                startDiv.style.display = 'none';
-                endDiv.style.display = 'none';
-                if (type === 'week') {
-                    dateInput.type = 'date';
-                    hint.innerText = '请选择该周内的任意一天';
-                } else if (type === 'month') {
-                    dateInput.type = 'month';
-                    hint.innerText = '请选择统计月份';
-                } else if (type === 'year') {
-                    dateInput.type = 'number';
-                    dateInput.placeholder = 'YYYY';
-                    hint.innerText = '请输入统计年份（如2026）';
-                }
-            }
-        });
-    </script>
 </div>
+
+<script>
+    // 根据报表类型自动调整日期输入格式
+    document.getElementById('report_type_select').addEventListener('change', function() {
+        const type = this.value;
+        const dateInputDiv = document.getElementById('date_input_div');
+        const startDateDiv = document.getElementById('start_date_div');
+        const endDateDiv = document.getElementById('end_date_div');
+        const dateInput = document.getElementById('date_input');
+        const startDate = document.getElementById('start_date');
+        const endDate = document.getElementById('end_date');
+        const dateHint = document.getElementById('date_hint');
+        
+        if (type === 'custom') {
+            // 自定义时间段：显示起始和结束日期输入框
+            dateInputDiv.style.display = 'none';
+            startDateDiv.style.display = 'block';
+            endDateDiv.style.display = 'block';
+            dateInput.required = false;
+            startDate.required = true;
+            endDate.required = true;
+        } else {
+            // 周/月/年报表：显示日期输入框
+            dateInputDiv.style.display = 'block';
+            startDateDiv.style.display = 'none';
+            endDateDiv.style.display = 'none';
+            dateInput.required = true;
+            startDate.required = false;
+            endDate.required = false;
+            
+            if (type === 'week') {
+                dateInput.type = 'date';
+                dateInput.placeholder = '选择日期（如 2025-01-10）';
+                dateHint.innerHTML = '周报表：选择日期（如 2025-01-10）';
+            } else if (type === 'month') {
+                dateInput.type = 'month';
+                dateInput.placeholder = '选择月份（如 2025-01）';
+                dateHint.innerHTML = '月报表：选择月份（如 2025-01）';
+            } else if (type === 'year') {
+                dateInput.type = 'text';
+                dateInput.placeholder = '输入年份（如 2025）';
+                dateInput.pattern = '[0-9]{4}';
+                dateHint.innerHTML = '年报表：输入年份（如 2025）';
+            }
+        }
+    });
+    
+    // 表单提交验证
+    document.getElementById('report_form').addEventListener('submit', function(e) {
+        const reportType = document.getElementById('report_type_select').value;
+        if (reportType === 'custom') {
+            const startDate = document.getElementById('start_date').value;
+            const endDate = document.getElementById('end_date').value;
+            if (!startDate || !endDate) {
+                e.preventDefault();
+                alert('自定义时间段报表需要填写起始日期和结束日期！');
+                return false;
+            }
+            if (new Date(startDate) > new Date(endDate)) {
+                e.preventDefault();
+                alert('起始日期不能晚于结束日期！');
+                return false;
+            }
+        }
+    });
+</script>
 {% endblock %}

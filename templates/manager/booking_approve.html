@@ -26,6 +26,7 @@
         {% endfor %}
     {% endif %}
 
+    <!-- 用户类型筛选 -->
     <div style="margin-bottom: 20px;">
         <a href="{% url 'booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
         <a href="{% url 'booking_approve' %}?user_type=teacher" class="btn {% if user_type_filter == 'teacher' %}btn-primary{% else %}btn-secondary{% endif %}">校内教师申请</a>
