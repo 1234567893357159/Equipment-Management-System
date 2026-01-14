@@ -1,5 +1,38 @@
 # 设备管理系统
 
+## 安装说明
+
+### 环境要求
+- Python 3.8+
+- Django 5.2.9
+
+### 安装步骤
+
+1. 安装项目依赖：
+```bash
+pip install -r requirements.txt
+```
+
+2. 运行数据库迁移：
+```bash
+python manage.py migrate
+```
+
+3. 创建初始用户组（可选）：
+```bash
+python manage.py shell < init_groups.py
+```
+
+4. 启动开发服务器：
+```bash
+python manage.py runserver
+```
+
+**重要提示**：如果遇到报表导出功能无法使用（如提示找不到 `openpyxl` 模块），请确保已安装所有依赖：
+```bash
+pip install -r requirements.txt
+```
+
 ## 当前进度
 
 ### 设备管理
@@ -45,15 +78,20 @@ TODO：
 + 自动记录所有设备操作历史（新增、修改、删除、借出、归还等）
 + 台账记录查看（包含完整的操作历史）
 + 高级筛选功能（设备编号、操作类型、日期范围、操作员）
-+ CSV导出功能（支持当前筛选结果导出）
++ Excel导出功能（支持当前筛选结果导出，日期格式正确）
 + 设备状态自动更新
 + 借出记录关联归还时间
++ 完整的测试套件（28个测试用例，覆盖所有功能）
 
 功能说明：
 - 台账为只读记录系统，自动记录所有设备相关操作
 - 支持多条件筛选和分页显示
-- 可导出筛选后的数据为CSV格式
+- 可导出筛选后的数据为Excel格式（.xlsx）
 - 记录包含操作时间、操作人、设备状态等完整信息
+
+测试：
+- 运行所有台账测试：`python manage.py test ledger.tests`
+- 详细测试说明请查看 [TESTING.md](TESTING.md)
 
 ## 其他用来调试的信息
 

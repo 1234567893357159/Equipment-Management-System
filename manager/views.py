@@ -1,179 +1,270 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.db.models import Q
-from django.contrib.auth.hashers import make_password  # 密码加密
+from django.db.models import Q, Count, Sum, Avg
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.utils import timezone
+from django.http import JsonResponse, HttpResponse
+from datetime import timedelta, datetime, date
+import json
+from decimal import Decimal
+import re
 
-# 跨应用模型与视图导入
+# --- 整合他人增加的 Excel 导出相关库 ---
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
+
+# 跨应用模型导入
 from user.models import UserInfo
 from user.forms import UserInfoForm
 from booking.models import Booking, ApprovalRecord
-from labadmin.views import handle_approval
+from devices.models import Device
+from ledger.models import DeviceLedger
+from .models import Report
 
-# Create your views here.
+# --- 基础视图 ---
 
-# ---------------------- 负责人主页 ----------------------
-def manager_home(request):
-    return render(request, 'manager/home.html')
-
-# ---------------------- 1. 设备预约审批 ----------------------
-@login_required
-def booking_approve(request):
-    """设备预约审批（管理员/负责人）"""
-    # 校验是否是管理员/负责人
+def admin_home(request):
+    """管理员首页"""
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
-    if not is_admin and not is_manager:
-        messages.error(request, '你无审批权限！')
-        return redirect('manager_home')
-    
-    # 获取筛选条件
-    user_type_filter = request.GET.get('user_type', 'all')
-    
-    # ========== 精准限定各角色的查询范围 ==========
-    if is_admin:
-        # 管理员：只看「待管理员审批（pending）」的申请
-        bookings = Booking.objects.filter(
-            status='pending'
-        ).order_by('-create_time')
-    else:  # 实验室负责人
-        # 负责人：只看「管理员已批准（admin_approved）」的申请（且仅校外人员）
-        bookings = Booking.objects.filter(
-            status='admin_approved',
-            applicant__user_type='external'
-        ).order_by('-create_time')
-    
-    # 筛选用户类型
-    if user_type_filter != 'all':
-        if is_admin:  # 管理员可筛选所有类型
-            bookings = bookings.filter(applicant__user_type=user_type_filter)
-        elif user_type_filter == 'external': # 负责人强制限定为校外
-            bookings = bookings.filter(applicant__user_type='external')
-    
-    # 处理审批操作
-    if request.method == 'POST':
-        if 'approve' in request.POST:
-            booking_id = request.POST.get('approve')
-            handle_approval(request, booking_id, 'approve')
-        elif 'reject' in request.POST:
-            booking_id = request.POST.get('reject')
-            handle_approval(request, booking_id, 'reject')
-        elif 'batch_approve' in request.POST or 'batch_reject' in request.POST:
-            booking_ids = request.POST.getlist('booking_ids')
-            action = 'approve' if 'batch_approve' in request.POST else 'reject'
-            for booking_id in booking_ids:
-                handle_approval(request, booking_id, action)
-        
-        return redirect('booking_approve')
-    
     context = {
-        'bookings': bookings,
-        'user_type_filter': user_type_filter,
         'is_admin': is_admin,
-        'is_manager': is_manager
+        'is_manager': is_manager,
     }
-    return render(request, 'manager/booking_approve.html', context)
+    return render(request, 'admin/home.html', context)
 
-# ---------------------- 2. 报表统计 ----------------------
-@login_required
-def manager_report_stat(request):
-    """负责人报表统计页面（含生成逻辑）"""
-    from labadmin.models import Report
-    from labadmin.views import generate_report_data
-    from datetime import datetime, timedelta, date
-    from decimal import Decimal
+def device_list(request):
+    """用户端设备查询视图"""
+    keyword = request.GET.get('keyword', '')
+    devices = Device.objects.all().order_by('device_code')
     
-    # 获取已生成的报表列表
+    if keyword:
+        devices = devices.filter(
+            Q(device_code__icontains=keyword) | 
+            Q(model__icontains=keyword) |        
+            Q(manufacturer__icontains=keyword) | 
+            Q(purpose__icontains=keyword)        
+        )
+
+    context = {
+        'devices': devices,
+        'keyword': keyword,
+    }
+    return render(request, 'user/device_list.html', context)
+
+def booking_apply(request):
+    if request.method == 'POST':
+        return redirect('my_booking')
+    return render(request, 'user/booking_apply.html')
+
+def my_booking(request):
+    return render(request, 'user/my_booking.html')
+
+
+# --- 报表与统计功能 (保留并增强他人增加的功能) ---
+
+def generate_report_data(report_type, start_date, end_date):
+    """生成报表核心统计数据"""
+    bookings = Booking.objects.filter(
+        booking_date__gte=start_date,
+        booking_date__lte=end_date
+    )
+    
+    approved_bookings = bookings.filter(status='manager_approved')
+    
+    # 基础计数
+    total_bookings = bookings.count()
+    approved_count = approved_bookings.count()
+    rejected_count = bookings.filter(Q(status='admin_rejected') | Q(status='manager_rejected')).count()
+    pending_count = bookings.filter(status='pending').count()
+    
+    # 设备统计
+    device_usage = []
+    for device in Device.objects.all():
+        device_bookings = approved_bookings.filter(device=device)
+        booking_count = device_bookings.count()
+        usage_hours = booking_count * 2
+        days = (end_date - start_date).days + 1
+        total_hours = days * 8
+        usage_rate = (usage_hours / total_hours * 100) if total_hours > 0 else 0
+        
+        device_usage.append({
+            'device_code': device.device_code,
+            'device_model': device.model,
+            'booking_count': booking_count,
+            'usage_hours': usage_hours,
+            'usage_rate': round(usage_rate, 2),
+            'revenue': float(device_bookings.filter(applicant__user_type='external').aggregate(
+                total=Sum('device__price_external')
+            )['total'] or Decimal('0'))
+        })
+    
+    # 汇总数据
+    report_data = {
+        'summary': {
+            'total_bookings': total_bookings,
+            'approved_count': approved_count,
+            'rejected_count': rejected_count,
+            'pending_count': pending_count,
+            'total_devices': Device.objects.count(),
+            'total_users': UserInfo.objects.filter(booking__in=approved_bookings).distinct().count(),
+            'total_revenue': float(sum(d['revenue'] for d in device_usage)),
+        },
+        'device_usage': device_usage,
+        'date_stats': list(approved_bookings.values('booking_date').annotate(count=Count('id')).order_by('booking_date')),
+    }
+    return report_data
+
+@login_required
+def report_stat(request):
+    """报表统计管理视图"""
     reports = Report.objects.all().order_by('-generated_at')[:20]
     report_type_filter = request.GET.get('report_type', '')
+    date_filter = request.GET.get('date_input', '') # 他人增加的日期筛选回显
     
     if report_type_filter:
         reports = reports.filter(report_type=report_type_filter)
     
-    # 处理报表生成请求
     if request.method == 'POST' and 'generate' in request.POST:
         report_type = request.POST.get('report_type')
-        date_input = request.POST.get('date_input', '').strip()
-        start_date_input = request.POST.get('start_date', '').strip()
-        end_date_input = request.POST.get('end_date', '').strip()
-        
-        if report_type == 'custom' and (not start_date_input or not end_date_input):
-            messages.error(request, '自定义时间段需要填写起止日期！')
-            return redirect('manager_report_stat')
-        elif report_type != 'custom' and not date_input:
-            messages.error(request, '请选择日期！')
-            return redirect('manager_report_stat')
+        date_input = request.POST.get('date_input')
         
         try:
-            # 日期解析逻辑
             if report_type == 'week':
                 input_date = datetime.strptime(date_input, '%Y-%m-%d').date()
                 start_date = input_date - timedelta(days=input_date.weekday())
                 end_date = start_date + timedelta(days=6)
-                report_name = f"{start_date} 至 {end_date} 周报表"
             elif report_type == 'month':
-                if '-' in date_input and len(date_input) <= 7:
-                    year, month = map(int, date_input.split('-'))
-                else:
-                    idate = datetime.strptime(date_input, '%Y-%m-%d').date()
-                    year, month = idate.year, idate.month
-                start_date = date(year, month, 1)
-                next_month = start_date.replace(day=28) + timedelta(days=4)
-                end_date = next_month.replace(day=1) - timedelta(days=1)
-                report_name = f"{year}年{month:02d}月报表"
-            elif report_type == 'year':
-                year = int(date_input[:4])
-                start_date = date(year, 1, 1)
-                end_date = date(year, 12, 31)
-                report_name = f"{year}年报表"
-            else: # custom
-                start_date = datetime.strptime(start_date_input, '%Y-%m-%d').date()
-                end_date = datetime.strptime(end_date_input, '%Y-%m-%d').date()
-                report_name = f"{start_date} 至 {end_date} 自定义报表"
+                input_date = datetime.strptime(date_input + "-01", '%Y-%m-%d').date()
+                start_date = input_date
+                end_date = (input_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            else:
+                start_date = datetime.strptime(request.POST.get('start_date'), '%Y-%m-%d').date()
+                end_date = datetime.strptime(request.POST.get('end_date'), '%Y-%m-%d').date()
 
-            # 生成并保存报表
-            report_data = generate_report_data(report_type, start_date, end_date)
+            data = generate_report_data(report_type, start_date, end_date)
             report = Report.objects.create(
                 report_type=report_type,
-                report_name=report_name,
+                report_name=f"{start_date}至{end_date}统计报表",
                 start_date=start_date,
                 end_date=end_date,
-                report_data=report_data,
-                total_bookings=report_data['summary']['total_bookings'],
-                total_revenue=Decimal(str(report_data['summary']['total_revenue'])),
+                report_data=data,
+                total_bookings=data['summary']['total_bookings'],
+                total_revenue=Decimal(str(data['summary']['total_revenue'])),
                 generated_by=request.user
             )
-            messages.success(request, f'报表生成成功：{report_name}')
-            return redirect(f'manager_report_stat?view={report.id}')
-            
+            messages.success(request, '报表生成成功！')
+            return redirect(f'/labadmin/report/stat/?view={report.id}')
         except Exception as e:
-            messages.error(request, f'操作失败：{str(e)}')
-            return redirect('manager_report_stat')
+            messages.error(request, f'生成失败：{str(e)}')
 
-    # 查看报表详情
-    report_id = request.GET.get('view')
-    current_report = Report.objects.filter(id=report_id).first() if report_id else None
-    
+    # --- 整合报表详情查看逻辑：同时支持 'view' 和 'report_id' 参数 ---
+    current_report = None
+    report_id = request.GET.get('view') or request.GET.get('report_id')
+    if report_id:
+        current_report = Report.objects.filter(id=report_id).first()
+
+    # 获取用户角色信息（用于页面 UI 渲染判断）
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+
     context = {
         'reports': reports,
         'current_report': current_report,
         'report_type_filter': report_type_filter,
+        'date_filter': date_filter,
+        'is_admin': is_admin,
+        'is_manager': is_manager,
     }
-    return render(request, 'manager/report_stat.html', context)
+    return render(request, 'admin/report_stat.html', context)
 
-# ---------------------- 3. 用户管理 ----------------------
+@login_required
+def export_report_csv(request, report_id):
+    """导出报表为Excel文件（.xlsx）—— 完整保留他人新增功能"""
+    report = get_object_or_404(Report, id=report_id)
+    data = report.get_report_data()
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "统计报表"
+    
+    # 写入基本信息
+    generated_at = report.generated_at.replace(tzinfo=None) if report.generated_at else None
+    ws.append(['报表名称', report.report_name])
+    ws.append(['报表类型', report.get_report_type_display()])
+    ws.append(['统计时间', f'{report.start_date.strftime("%Y-%m-%d")} 至 {report.end_date.strftime("%Y-%m-%d")}'])
+    ws.append(['生成时间', generated_at])
+    ws.append(['生成人', report.generated_by.username if report.generated_by else '系统自动'])
+    ws.append([])
+    
+    if generated_at:
+        ws.cell(row=4, column=2).number_format = 'yyyy-mm-dd hh:mm:ss'
+    
+    # 汇总统计
+    ws.append(['汇总统计'])
+    ws.append(['总预约次数', data['summary']['total_bookings']])
+    ws.append(['已审批通过', data['summary']['approved_count']])
+    ws.append(['总收入（元）', data['summary']['total_revenue']])
+    ws.append(['设备总数', data['summary']['total_devices']])
+    ws.append(['用户总数', data['summary']['total_users']])
+    ws.append([])
+    
+    # 设备使用统计
+    ws.append(['设备使用统计'])
+    headers = ['设备编号', '设备型号', '预约次数', '使用时长（小时）', '使用率（%）', '校外收费（元）']
+    ws.append(headers)
+    
+    header_font = Font(bold=True)
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=ws.max_row, column=col)
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    for device in data.get('device_usage', []):
+        ws.append([
+            device['device_code'],
+            device['device_model'],
+            device['booking_count'],
+            device['usage_hours'],
+            f"{device['usage_rate']}%",
+            device['revenue']
+        ])
+    
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+            except: pass
+        ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+    
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', report.report_name)
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="report_{report.id}_{safe_filename}.xlsx"'
+    wb.save(response)
+    return response
+
+# --- 用户管理模块：整合他人增加的统计与导出功能 ---
+
 @login_required
 def user_manage(request):
-    """用户管理：展示、搜索、新增（自动生成账号）"""
+    """用户管理：展示、搜索、新增并自动同步账号"""
     user_type = request.GET.get('user_type', '')
     keyword = request.GET.get('keyword', '')
-    users = UserInfo.objects.all()
     
-    if user_type:
-        users = users.filter(user_type=user_type)
+    # 采用他人的增强逻辑：使用annotate添加借用次数统计
+    users_qs = UserInfo.objects.annotate(booking_count=Count('booking'))
+    
+    if user_type and user_type in ['student', 'teacher', 'external']:
+        users_qs = users_qs.filter(user_type=user_type)
     if keyword:
-        users = users.filter(Q(name__icontains=keyword) | Q(user_code__icontains=keyword))
+        users_qs = users_qs.filter(Q(name__icontains=keyword) | Q(user_code__icontains=keyword))
     
     if request.method == 'POST':
         form = UserInfoForm(request.POST)
@@ -181,8 +272,9 @@ def user_manage(request):
             user_info = form.save(commit=False)
             username = user_info.user_code
             if User.objects.filter(username=username).exists():
-                form.add_error('user_code', '该用户编号已存在！')
+                form.add_error('user_code', '该用户编号已作为登录账号存在！')
             else:
+                # 创建对应的登录账号，默认密码为用户编号
                 auth_user = User.objects.create(
                     username=username,
                     password=make_password(username),
@@ -191,16 +283,32 @@ def user_manage(request):
                 )
                 user_info.auth_user = auth_user
                 user_info.save()
-                # 关联到普通用户组
+                
+                # 关联到“普通用户”组
                 group, _ = Group.objects.get_or_create(name='普通用户')
                 auth_user.groups.add(group)
+                messages.success(request, f'用户【{user_info.name}】创建成功！')
                 return redirect('user_manage')
     else:
         form = UserInfoForm()
     
-    return render(request, 'manager/user_manage.html', {
-        'users': users, 'form': form, 'keyword': keyword, 'user_type': user_type
-    })
+    # 获取统计数据（来自他人新增的功能）
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    context = {
+        'users': users_qs,
+        'keyword': keyword,
+        'user_type': user_type,
+        'form': form,
+        'is_admin': is_admin,
+        'is_manager': is_manager,
+        'total_users': users_qs.count(),
+        'active_users': users_qs.filter(is_active=True).count(),
+        'inactive_users': users_qs.filter(is_active=False).count(),
+        'users_with_bookings': users_qs.filter(booking_count__gt=0).count(),
+    }
+    return render(request, 'manager/user_manage.html', context)
 
 @login_required
 def user_edit(request, pk):
@@ -217,10 +325,21 @@ def user_edit(request, pk):
                     user_info.auth_user.password = make_password(user_info.user_code)
                 user_info.auth_user.save()
             user_info.save()
+            messages.success(request, '用户信息更新成功！')
             return redirect('user_manage')
     else:
         form = UserInfoForm(instance=user_info)
-    return render(request, 'manager/user_edit.html', {'form': form, 'user': user_info})
+    
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    context = {
+        'form': form, 
+        'user': user_info,
+        'is_admin': is_admin,
+        'is_manager': is_manager
+    }
+    return render(request, 'manager/user_edit.html', context)
 
 @login_required
 def user_delete(request, pk):
@@ -229,15 +348,181 @@ def user_delete(request, pk):
     if user_info.auth_user:
         user_info.auth_user.delete()
     user_info.delete()
+    messages.success(request, '用户已成功删除。')
     return redirect('user_manage')
 
 @login_required
 def user_toggle_status(request, pk):
-    """快速禁用/启用用户"""
+    """快速禁用/启用用户资格"""
     user_info = get_object_or_404(UserInfo, pk=pk)
     user_info.is_active = not user_info.is_active
     if user_info.auth_user:
         user_info.auth_user.is_active = user_info.is_active
         user_info.auth_user.save()
     user_info.save()
+    status_text = "正常" if user_info.is_active else "禁用"
+    messages.success(request, f'用户【{user_info.name}】借用资格已更新为：{status_text}')
     return redirect('user_manage')
+
+@login_required
+def user_export_ledger(request):
+    """导出用户台账为Excel文件（.xlsx）—— 完整合入他人新增功能 """
+    user_type = request.GET.get('user_type', '')
+    keyword = request.GET.get('keyword', '')
+    users = UserInfo.objects.annotate(booking_count=Count('booking'))
+    
+    if user_type and user_type in ['student', 'teacher', 'external']:
+        users = users.filter(user_type=user_type)
+    if keyword:
+        users = users.filter(Q(name__icontains=keyword) | Q(user_code__icontains=keyword))
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "用户台账"
+    
+    # 动态设置表头
+    if user_type == 'teacher':
+        headers = ['教师编号', '姓名', '性别', '职称', '专业方向', '所在学院', '联系电话', '借用次数', '借用资格', '创建时间']
+        create_time_col = 10
+    elif user_type == 'student':
+        headers = ['学号', '姓名', '性别', '专业', '导师', '所在学院', '联系电话', '借用次数', '借用资格', '创建时间']
+        create_time_col = 10
+    elif user_type == 'external':
+        headers = ['编号', '姓名', '性别', '单位名称', '联系电话', '借用次数', '借用资格', '创建时间']
+        create_time_col = 8
+    else:
+        headers = ['用户编号', '姓名', '类型', '性别', '所在单位', '联系电话', '借用次数', '借用资格', '创建时间']
+        create_time_col = 9
+    
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+    
+    for u in users:
+        c_time = u.create_time.replace(tzinfo=None) if u.create_time else None
+        active_text = '正常' if u.is_active else '禁用'
+        
+        if user_type == 'teacher':
+            row = [u.user_code, u.name, u.gender, u.title or '-', u.research_field or '-', u.department, u.phone, u.booking_count, active_text, c_time]
+        elif user_type == 'student':
+            row = [u.user_code, u.name, u.gender, u.major or '-', u.advisor or '-', u.department, u.phone, u.booking_count, active_text, c_time]
+        elif user_type == 'external':
+            row = [u.user_code, u.name, u.gender, u.department, u.phone, u.booking_count, active_text, c_time]
+        else:
+            row = [u.user_code, u.name, u.get_user_type_display(), u.gender, u.department, u.phone, u.booking_count, active_text, c_time]
+        
+        ws.append(row)
+        if c_time: ws.cell(row=ws.max_row, column=create_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
+    
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+            except: pass
+        ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+    
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename="user_ledger.xlsx"'
+    wb.save(response)
+    return response
+
+# --- 审核功能 (保留您的审批界面与核心逻辑) ---
+
+@login_required
+def booking_approve(request):
+    """设备预约审批视图（整合了您的三级审核与他人的类型筛选）"""
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    if not is_admin and not is_manager:
+        messages.error(request, '您没有审批权限！')
+        return redirect('admin_home')
+
+    user_type_filter = request.GET.get('user_type', 'all')
+
+    if is_admin:
+        # 管理员看待审申请
+        bookings = Booking.objects.filter(status='pending').order_by('-create_time')
+    else:
+        # 负责人看管理员已通过且属于校外人员的终审申请
+        bookings = Booking.objects.filter(status='admin_approved', applicant__user_type='external').order_by('-create_time')
+
+    if user_type_filter != 'all':
+        bookings = bookings.filter(applicant__user_type=user_type_filter)
+
+    if request.method == 'POST':
+        if 'approve' in request.POST:
+            handle_approval(request, request.POST.get('approve'), 'approve')
+        elif 'reject' in request.POST:
+            handle_approval(request, request.POST.get('reject'), 'reject')
+        elif 'batch_approve' in request.POST or 'batch_reject' in request.POST:
+            ids = request.POST.getlist('booking_ids')
+            action = 'approve' if 'batch_approve' in request.POST else 'reject'
+            for b_id in ids:
+                handle_approval(request, b_id, action)
+                
+        return redirect('booking_approve')
+
+    return render(request, 'admin/booking_approve.html', {
+        'bookings': bookings,
+        'is_admin': is_admin,
+        'is_manager': is_manager,
+        'user_type_filter': user_type_filter
+    })
+
+def handle_approval(request, booking_id, action):
+    """核心审批处理逻辑：整合了审批记录与台账记录"""
+    booking = get_object_or_404(Booking, id=booking_id)
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    
+    if action == 'approve':
+        if is_admin:
+            if booking.applicant.user_type in ['student', 'teacher']:
+                booking.status = 'manager_approved'
+                create_borrow_ledger(booking, request.user) # 审批通过，同步创建借出台账
+            else:
+                booking.status = 'admin_approved' # 校外人员流转至负责人
+        else:
+            booking.status = 'manager_approved'
+            create_borrow_ledger(booking, request.user) # 负责人审批通过，同步创建台账
+    else:
+        booking.status = 'admin_rejected' if is_admin else 'manager_rejected'
+
+    booking.save()
+
+    comment_key = f'comment_{booking.booking_code}'
+    comment_val = request.POST.get(comment_key, '批量操作' if 'batch' in request.body.decode() else '无备注')
+
+    ApprovalRecord.objects.create(
+        booking=booking,
+        approver=request.user,
+        approval_level='admin' if is_admin else 'manager',
+        action=action,
+        comment=comment_val
+    )
+    
+    action_text = '批准' if action == 'approve' else '拒绝'
+    messages.success(request, f'已{action_text}预约：{booking.booking_code}')
+
+def create_borrow_ledger(booking, operator):
+    """审批通过时自动创建台账记录"""
+    try:
+        DeviceLedger.objects.create(
+            device=booking.device,
+            device_name=booking.device.model,
+            user=booking.applicant,
+            operation_type='borrow',
+            operation_date=timezone.now(),
+            expected_return_date=booking.booking_date,
+            status_after_operation='unavailable',
+            description=f'预约编号：{booking.booking_code}，用途：{booking.purpose or "未填写"}',
+            operator=operator
+        )
+        # 同步更新设备状态为不可用
+        booking.device.status = 'unavailable'
+        booking.device.save()
+    except Exception as e:
+        print(f"台账记录自动生成失败: {e}")

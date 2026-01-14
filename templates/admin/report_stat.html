@@ -4,11 +4,26 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    <a href="{% url 'admin_home' %}">首页</a>
-    <a href="{% url 'booking_approve' %}">预约审批</a>
-    <a href="{% url 'device_manage' %}">设备管理</a>
-    <a href="{% url 'ledger:ledger_home' %}">台账</a>
-    <a href="{% url 'report_stat' %}" class="active">报表统计</a>
+    {% if is_admin %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}">预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}" class="active">报表统计</a>
+    {% elif is_manager %}
+        <a href="{% url 'manager_home' %}">首页</a>
+        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'user_manage' %}">用户管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'manager_report_stat' %}" class="active">报表统计</a>
+    {% else %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}">预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}" class="active">报表统计</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -53,7 +68,6 @@
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button type="submit" name="generate" class="btn btn-primary">生成报表</button>
-                    <button type="button" class="btn btn-success">导出报表</button>
                     <button type="button" class="btn">打印</button>
                 </div>
             </div>
@@ -72,7 +86,7 @@
                         <th style="padding: 10px; border: 1px solid #ddd;">名称</th>
                         <th style="padding: 10px; border: 1px solid #ddd;">统计周期</th>
                         <th style="padding: 10px; border: 1px solid #ddd;">预约总数</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">生成方式</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">生成人/方式</th>
                         <th style="padding: 10px; border: 1px solid #ddd;">操作</th>
                     </tr>
                 </thead>
@@ -84,10 +98,17 @@
                         <td style="padding: 8px; border: 1px solid #ddd;">{{ report.start_date|date:"Y-m-d" }} ~ {{ report.end_date|date:"Y-m-d" }}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">{{ report.total_bookings }}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                            {% if report.generated_by %} 手动 {% else %} <span style="color: #2ecc71;">🔄 自动</span> {% endif %}
+                            {% if report.generated_by %}
+                                {{ report.generated_by.username }} (手动)
+                            {% else %}
+                                <span style="color: #2ecc71;">🔄 系统自动</span>
+                            {% endif %}
                         </td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                            <a href="?view={{ report.id }}" class="btn btn-info" style="padding: 2px 8px; font-size: 12px;">查看数据</a>
+                            <div style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="?view={{ report.id }}" class="btn btn-info" style="padding: 2px 8px; font-size: 12px; white-space: nowrap;">查看详情</a>
+                                <a href="{% url 'export_report_csv' report_id=report.id %}" class="btn btn-success" style="padding: 2px 8px; font-size: 12px; white-space: nowrap;">导出</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -102,10 +123,15 @@
     <hr style="border: 0; border-top: 1px solid #eee; margin: 40px 0;">
 
     {% if current_report %}
-    <div>
-        <h3 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-            {{ current_report.report_name }} 详情
-        </h3>
+    <div style="margin-top: 30px; padding: 20px; background-color: #f9f9f9; border-radius: 5px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #2c3e50;">{{ current_report.report_name }} 详情</h3>
+            <a href="{% url 'export_report_csv' report_id=current_report.id %}" class="btn btn-success" style="white-space: nowrap;">📥 导出此报表</a>
+        </div>
+        <p style="color: #666; margin-bottom: 20px;">
+            统计时间：{{ current_report.start_date|date:"Y年m月d日" }} 至 {{ current_report.end_date|date:"Y年m月d日" }} | 
+            生成时间：{{ current_report.generated_at|date:"Y-m-d H:i" }}
+        </p>
         
         {% with data=current_report.get_report_data %}
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0;">

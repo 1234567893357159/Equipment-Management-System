@@ -10,6 +10,7 @@ from django.http import JsonResponse, HttpResponse
 from datetime import timedelta, datetime, date
 import json
 from decimal import Decimal
+import re
 
 # 跨应用模型导入
 from user.models import UserInfo
@@ -19,10 +20,22 @@ from devices.models import Device
 from ledger.models import DeviceLedger
 from .models import Report
 
+# --- 整合他人增加的 Excel 导出相关导包 ---
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
+
 # --- 基础视图 ---
 
 def admin_home(request):
-    return render(request, 'admin/home.html')
+    """管理员首页"""
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    context = {
+        'is_admin': is_admin,
+        'is_manager': is_manager,
+    }
+    return render(request, 'admin/home.html', context)
 
 def device_list(request):
     """用户端设备查询视图"""
@@ -111,6 +124,7 @@ def report_stat(request):
     """报表统计管理视图"""
     reports = Report.objects.all().order_by('-generated_at')[:20]
     report_type_filter = request.GET.get('report_type', '')
+    date_filter = request.GET.get('date_input', '') # 他人新增的过滤项回显
     
     if report_type_filter:
         reports = reports.filter(report_type=report_type_filter)
@@ -120,7 +134,6 @@ def report_stat(request):
         date_input = request.POST.get('date_input')
         
         try:
-            # 简化日期解析逻辑（支持周/月/年）
             if report_type == 'week':
                 input_date = datetime.strptime(date_input, '%Y-%m-%d').date()
                 start_date = input_date - timedelta(days=input_date.weekday())
@@ -149,17 +162,99 @@ def report_stat(request):
         except Exception as e:
             messages.error(request, f'生成失败：{str(e)}')
 
+    # --- 整合解决冲突：报表详情查看逻辑 ---
     current_report = None
-    view_id = request.GET.get('view')
-    if view_id:
-        current_report = Report.objects.filter(id=view_id).first()
+    # 同时支持 'view' (您的参数名) 和 'report_id' (他人的参数名)
+    report_id = request.GET.get('view') or request.GET.get('report_id')
+    
+    if report_id:
+        try:
+            current_report = Report.objects.get(id=report_id)
+        except Report.DoesNotExist:
+            messages.error(request, '报表不存在！')
 
-    return render(request, 'admin/report_stat.html', {
+    # 获取用户角色信息（用于侧边栏渲染）
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+
+    context = {
         'reports': reports,
         'current_report': current_report,
-        'report_type_filter': report_type_filter
-    })
+        'report_type_filter': report_type_filter,
+        'date_filter': date_filter,
+        'is_admin': is_admin,
+        'is_manager': is_manager,
+    }
+    return render(request, 'admin/report_stat.html', context)
 
+@login_required
+def export_report_csv(request, report_id):
+    """导出报表为Excel文件（.xlsx）—— 完整保留他人功能"""
+    report = get_object_or_404(Report, id=report_id)
+    data = report.get_report_data()
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "报表详情"
+    
+    # 写入基本信息
+    generated_at = report.generated_at.replace(tzinfo=None) if report.generated_at else None
+    ws.append(['报表名称', report.report_name])
+    ws.append(['报表类型', report.get_report_type_display()])
+    ws.append(['统计时间', f'{report.start_date.strftime("%Y-%m-%d")} 至 {report.end_date.strftime("%Y-%m-%d")}'])
+    ws.append(['生成时间', generated_at])
+    ws.append(['生成人', report.generated_by.username if report.generated_by else '系统自动'])
+    ws.append([]) # 空行
+    
+    if generated_at:
+        ws.cell(row=4, column=2).number_format = 'yyyy-mm-dd hh:mm:ss'
+    
+    # 汇总统计
+    ws.append(['汇总统计'])
+    ws.append(['总预约次数', data['summary']['total_bookings']])
+    ws.append(['已审批通过', data['summary']['approved_count']])
+    ws.append(['总收入（元）', data['summary']['total_revenue']])
+    ws.append(['设备总数', data['summary']['total_devices']])
+    ws.append(['用户总数', data['summary']['total_users']])
+    ws.append([])
+    
+    # 设备使用明细
+    ws.append(['设备使用统计'])
+    headers = ['设备编号', '设备型号', '预约次数', '使用时长（小时）', '使用率（%）', '校外收费（元）']
+    ws.append(headers)
+    
+    header_font = Font(bold=True)
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=ws.max_row, column=col)
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+    
+    for device in data.get('device_usage', []):
+        ws.append([
+            device['device_code'],
+            device['device_model'],
+            device['booking_count'],
+            device['usage_hours'],
+            f"{device['usage_rate']}%",
+            device['revenue']
+        ])
+    
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except: pass
+        ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+    
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', report.report_name)
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="report_{report.id}_{safe_filename}.xlsx"'
+    wb.save(response)
+    return response
 
 # --- 审核功能 (保留您的审批界面与核心逻辑) ---
 
@@ -173,10 +268,8 @@ def booking_approve(request):
         messages.error(request, '您没有审批权限！')
         return redirect('admin_home')
 
-    # 保留他人的用户类型筛选功能
     user_type_filter = request.GET.get('user_type', 'all')
 
-    # 您的核心筛选逻辑：管理员看待审，负责人看校外待终审
     if is_admin:
         bookings = Booking.objects.filter(status='pending').order_by('-create_time')
     else:
@@ -185,7 +278,6 @@ def booking_approve(request):
     if user_type_filter != 'all':
         bookings = bookings.filter(applicant__user_type=user_type_filter)
 
-    # 处理审批提交
     if request.method == 'POST':
         if 'approve' in request.POST:
             handle_approval(request, request.POST.get('approve'), 'approve')
@@ -211,30 +303,26 @@ def handle_approval(request, booking_id, action):
     booking = get_object_or_404(Booking, id=booking_id)
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     
-    # 1. 您的状态流转逻辑
     if action == 'approve':
         if is_admin:
-            # 如果是校内人员，管理员审批即通过；校外人员则转为待负责人审
             if booking.applicant.user_type in ['student', 'teacher']:
                 booking.status = 'manager_approved'
-                create_borrow_ledger(booking, request.user) # 合并台账功能
+                create_borrow_ledger(booking, request.user) 
             else:
                 booking.status = 'admin_approved' 
         else:
             booking.status = 'manager_approved'
-            create_borrow_ledger(booking, request.user) # 合并台账功能
+            create_borrow_ledger(booking, request.user) 
     else:
         booking.status = 'admin_rejected' if is_admin else 'manager_rejected'
 
     booking.save()
 
-    # 2. 您的备注获取逻辑
     comment_key = f'comment_{booking.booking_code}'
     comment_val = request.POST.get(comment_key, '')
     if not comment_val:
         comment_val = '批量操作' if 'batch' in request.body.decode() else '无备注'
 
-    # 3. 记录审批日志
     ApprovalRecord.objects.create(
         booking=booking,
         approver=request.user,
@@ -260,7 +348,6 @@ def create_borrow_ledger(booking, operator):
             description=f'预约编号：{booking.booking_code}，用途：{booking.purpose or "未填写"}',
             operator=operator
         )
-        # 更新设备状态
         booking.device.status = 'unavailable'
         booking.device.save()
     except Exception as e:

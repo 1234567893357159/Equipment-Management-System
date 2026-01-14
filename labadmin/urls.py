@@ -13,4 +13,6 @@ urlpatterns = [
     path('device/detail/<int:pk>/', device_detail, name='device_detail'),
     # 报表统计页
     path('report/', views.report_stat, name='report_stat'),
+    # 报表导出
+    path('report/export/<int:report_id>/', views.export_report_csv, name='export_report_csv'),
 ]

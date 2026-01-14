@@ -41,21 +41,24 @@
             min-height: calc(100vh - 55px);
         }
 
-        /* --- 侧边栏样式 --- */
+        /* --- 侧边栏样式（综合合并方案） --- */
         .sidebar {
-            width: 220px;
+            width: 240px; /* 采用 main 的宽度，容纳长文本 */
+            min-width: 240px;
             background-color: #34495e;
-            padding-top: 15px;
+            padding-top: 20px;
+            overflow-y: auto; /* 采用 main 的滚动逻辑 */
             flex-shrink: 0;
         }
         .sidebar a {
             display: block;
-            color: #bdc3c7;
+            color: #bdc3c7; /* 采用 master 的优雅色调 */
             padding: 12px 20px;
             text-decoration: none;
-            transition: all 0.3s;
-            border-left: 4px solid transparent;
-            font-size: 0.95rem;
+            transition: all 0.3s; /* 采用 master 的过渡动画 */
+            border-left: 4px solid transparent; /* 采用 master 的边框特效 */
+            font-size: 14px; /* 采用 main 的字号 */
+            white-space: nowrap; /* 采用 main 的防止换行 */
         }
         .sidebar a:hover {
             background-color: #2c3e50;
@@ -72,6 +75,7 @@
         .content {
             flex: 1;
             padding: 25px;
+            background-color: #f4f7f6;
             overflow-x: auto;
         }
         .card {
@@ -207,7 +211,7 @@
     </div>
 
     <script>
-        // 自动消失的提示信息 (可选)
+        // 自动消失的提示信息
         setTimeout(function() {
             const alerts = document.querySelectorAll('.alert');
             alerts.forEach(alert => {
