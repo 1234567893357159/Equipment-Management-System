@@ -4,27 +4,12 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    {% if is_admin %}
-        <a href="{% url 'admin_home' %}">首页</a>
-        <a href="{% url 'booking_approve' %}">预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'report_stat' %}">报表统计</a>
-    {% elif is_manager %}
-        <a href="{% url 'manager_home' %}">首页</a>
-        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'user_manage' %}" class="active">用户管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'manager_report_stat' %}">报表统计</a>
-    {% else %}
-        <a href="{% url 'manager_home' %}">首页</a>
-        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'user_manage' %}" class="active">用户管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'manager_report_stat' %}">报表统计</a>
-    {% endif %}
+    <a href="{% url 'manager_home' %}">首页</a>
+    <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+    <a href="{% url 'device_manage' %}">设备管理</a>
+    <a href="{% url 'user_manage' %}" class="active">用户管理</a>
+    <a href="{% url 'ledger:ledger_home' %}">台账</a>
+    <a href="{% url 'manager_report_stat' %}">报表统计</a>
 </div>
 {% endblock %}
 
@@ -32,8 +17,9 @@
 <div class="card">
     <h2>系统用户管理</h2>
     <p style="color: #666; margin-bottom: 20px;">
-        管理所有系统用户（教师、学生、校外人员），支持新增、编辑、禁用/启用和删除操作。
+        管理所有系统用户（教师、学生、校外人员、设备管理员），支持新增、编辑、禁用/启用和删除操作。
         <br>提示：点击"借用次数"可跳转到对应的台账页面查看详细记录。
+        <br>提示：设备管理员用户不关联UserInfo，需要单独管理。
     </p>
     
     <!-- 统计信息卡片 -->
@@ -54,13 +40,28 @@
             <div style="font-size: 24px; font-weight: bold; color: #ffc107;">{{ users_with_bookings }}</div>
             <div style="color: #666; font-size: 14px;">有借用记录</div>
         </div>
+        {% if pending_approvals > 0 %}
+        <div style="padding: 15px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ff9800;">
+            <div style="font-size: 24px; font-weight: bold; color: #ff9800;">{{ pending_approvals }}</div>
+            <div style="color: #666; font-size: 14px;">待审核用户</div>
+        </div>
+        {% endif %}
     </div>
+    
+    <!-- 待审核用户提示 -->
+    {% if pending_approvals > 0 %}
+    <div style="padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; margin-bottom: 20px;">
+        <strong>⚠️ 有 {{ pending_approvals }} 个用户待审核</strong>（教师和管理员注册需要审核）
+        <a href="?approval_status=pending" style="margin-left: 10px; color: #007bff;">查看待审核用户</a>
+    </div>
+    {% endif %}
     
     <div style="margin-bottom: 20px;">
         <!-- 1. 类型筛选按钮 -->
         <a href="{% url 'user_manage' %}?user_type=teacher" class="btn {% if user_type == 'teacher' %}btn-primary{% endif %}">校内教师</a>
         <a href="{% url 'user_manage' %}?user_type=student" class="btn {% if user_type == 'student' %}btn-primary{% endif %}">校内学生</a>
         <a href="{% url 'user_manage' %}?user_type=external" class="btn {% if user_type == 'external' %}btn-primary{% endif %}">校外人员</a>
+        <a href="{% url 'user_manage' %}?user_type=admin" class="btn {% if user_type == 'admin' %}btn-primary{% endif %}">设备管理员</a>
         <a href="{% url 'user_manage' %}" class="btn">全部用户</a>
         <a href="{% url 'user_export_ledger' %}?{{ request.GET.urlencode }}" class="btn btn-success">导出用户台账</a>
         
@@ -78,53 +79,122 @@
     <!-- 3. 新增用户表单（折叠/展开，可选） -->
     <div style="margin: 20px 0; padding: 15px; border: 1px solid #eee; border-radius: 5px;">
         <h3 style="margin-top: 0;">新增用户</h3>
-        <form method="post">
-            {% csrf_token %}
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+        
+        <!-- 新增管理员表单 -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+            <h4 style="margin-top: 0; color: #007bff;">新增设备管理员</h4>
+            <form method="post" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 15px; align-items: end;">
+                {% csrf_token %}
+                <input type="hidden" name="create_admin" value="true">
                 <div class="form-group">
-                    <label>{{ form.user_code.label }}</label>
-                    {{ form.user_code }}
+                    <label>管理员用户名</label>
+                    <input type="text" name="admin_username" class="form-control" required placeholder="例如：admin001">
+                    <small style="color: #666;">初始密码与用户名相同</small>
                 </div>
                 <div class="form-group">
-                    <label>{{ form.name.label }}</label>
-                    {{ form.name }}
+                    <label>管理员姓名</label>
+                    <input type="text" name="admin_name" class="form-control" required placeholder="例如：张三">
                 </div>
                 <div class="form-group">
-                    <label>{{ form.user_type.label }}</label>
-                    {{ form.user_type }}
+                    <button type="submit" class="btn btn-success">创建管理员</button>
                 </div>
-                <div class="form-group">
-                    <label>{{ form.department.label }}</label>
-                    {{ form.department }}
+            </form>
+        </div>
+        
+        <!-- 新增普通用户表单 -->
+        <div style="padding: 15px; background: #fff; border-radius: 5px;">
+            <h4 style="margin-top: 0;">新增普通用户（学生/教师/校外人员）</h4>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="create_admin" value="false">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>{{ form.user_code.label }}</label>
+                        {{ form.user_code }}
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.name.label }}</label>
+                        {{ form.name }}
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.user_type.label }}</label>
+                        {{ form.user_type }}
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.department.label }}</label>
+                        {{ form.department }}
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.phone.label }}</label>
+                        {{ form.phone }}
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.is_active.label }}</label>
+                        {{ form.is_active }}
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>{{ form.phone.label }}</label>
-                    {{ form.phone }}
-                </div>
-                <div class="form-group">
-                    <label>{{ form.is_active.label }}</label>
-                    {{ form.is_active }}
-                </div>
-            </div>
-            <button type="submit" class="btn btn-success" style="margin-top: 10px;">保存新增用户</button>
-        </form>
+                <button type="submit" class="btn btn-success" style="margin-top: 10px;">保存新增用户</button>
+            </form>
+        </div>
     </div>
 
     <!-- 4. 用户列表 -->
     <table>
         <thead>
             <tr>
-                <th>用户编号/学号</th>
+                <th>用户编号/用户名</th>
                 <th>姓名</th>
                 <th>用户类型</th>
                 <th>所在学院/单位</th>
                 <th>联系电话</th>
                 <th>借用次数</th>
-                <th>借用资格</th>
+                <th>状态</th>
+                <th>审核状态</th>
                 <th>操作</th>
             </tr>
         </thead>
         <tbody>
+            <!-- 显示管理员用户 -->
+            {% if user_type == 'admin' %}
+                {% for admin_user in admin_users %}
+                <tr>
+                    <td>{{ admin_user.username }}</td>
+                    <td>{{ admin_user.first_name|default:admin_user.username }}</td>
+                    <td><span style="color: #007bff; font-weight: bold;">设备管理员</span></td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td><span style="color: #999;">-</span></td>
+                    <td>
+                        {% if admin_user.is_active %}
+                        <span style="color: green;">正常</span>
+                        {% else %}
+                        <span style="color: red;">禁用</span>
+                        {% endif %}
+                    </td>
+                    <td><span style="color: #999;">-</span></td>
+                    <td>
+                        {% if admin_user.is_active %}
+                        <form method="post" action="{% url 'user_toggle_admin_status' admin_user.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('确定要禁用管理员【{{ admin_user.first_name|default:admin_user.username }}】吗？')">禁用</button>
+                        </form>
+                        {% else %}
+                        <form method="post" action="{% url 'user_toggle_admin_status' admin_user.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-success" onclick="return confirm('确定要启用管理员【{{ admin_user.first_name|default:admin_user.username }}】吗？')">启用</button>
+                        </form>
+                        {% endif %}
+                        <small style="color: #666; display: block; margin-top: 5px;">用户名：{{ admin_user.username }}<br>初始密码：{{ admin_user.username }}</small>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center">暂无管理员用户</td>
+                </tr>
+                {% endfor %}
+            {% endif %}
+            
+            <!-- 显示普通用户 -->
             {% for user in users %}
             <tr>
                 <td>{{ user.user_code }}</td>
@@ -151,6 +221,28 @@
                     {% endif %}
                 </td>
                 <td>
+                    {% if user.user_type == 'teacher' %}
+                        {% if user.approval_status == 'pending' %}
+                        <span style="color: #ff9800; font-weight: bold;">待审核</span>
+                        {% elif user.approval_status == 'approved' %}
+                        <span style="color: green;">已通过</span>
+                        {% elif user.approval_status == 'rejected' %}
+                        <span style="color: red;">已拒绝</span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #999;">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <!-- 审核按钮（仅对教师和管理员，且状态为待审核） -->
+                    {% if user.user_type == 'teacher' and user.approval_status == 'pending' %}
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="user_id" value="{{ user.id }}">
+                        <button type="submit" name="approve_user" value="approve" class="btn btn-success" onclick="return confirm('确定要通过用户【{{ user.name }}】的注册审核吗？')">通过审核</button>
+                        <button type="submit" name="approve_user" value="reject" class="btn btn-danger" onclick="return confirm('确定要拒绝用户【{{ user.name }}】的注册审核吗？')">拒绝审核</button>
+                    </form>
+                    {% endif %}
                     <!-- 编辑按钮 -->
                     <a href="{% url 'user_edit' pk=user.pk %}" class="btn btn-primary">查看详情/编辑</a>
                     <!-- 状态切换按钮（禁用/启用） -->

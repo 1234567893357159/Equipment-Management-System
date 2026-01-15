@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -17,13 +21,13 @@
     <h2>普通用户操作中心</h2>
     <p style="margin: 10px 0;">欢迎使用江南大学实验室设备管理系统！</p>
     <div style="display: flex; gap: 20px; margin-top: 20px;">
-        <a href="{% url 'device_list' %}" class="btn">
+        <a href="{% url 'device_list' %}" class="btn" style="text-decoration: none; display: inline-block; cursor: pointer;">
             <i>📱</i> 查看可用设备
         </a>
-        <a href="{% url 'booking_apply' %}" class="btn btn-success">
+        <a href="{% url 'booking_apply' %}" class="btn btn-success" style="text-decoration: none; display: inline-block; cursor: pointer; pointer-events: auto;">
             <i>📝</i> 提交设备预约
         </a>
-        <a href="{% url 'my_booking' %}" class="btn">
+        <a href="{% url 'my_booking' %}" class="btn" style="text-decoration: none; display: inline-block; cursor: pointer; pointer-events: auto;">
             <i>📋</i> 查看我的预约
         </a>
     </div>

@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 

@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}批量导入学生 - 江南大学实验室设备管理系统{% endblock %}
+
+{% block sidebar %}
+<div class="sidebar">
+    <a href="{% url 'user_home' %}">首页</a>
+    <a href="{% url 'device_list' %}">设备查询</a>
+    <a href="{% url 'booking_apply' %}">预约申请</a>
+    <a href="{% url 'my_booking' %}">我的预约</a>
+    <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>批量导入学生（Excel）</h2>
+    {% if messages %}
+        {% for message in messages %}
+            <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
+                {% if message.tags == 'success' %}background-color: #d4edda; color: #155724;{% endif %}
+                {% if message.tags == 'error' %}background-color: #f8d7da; color: #721c24;{% endif %}
+                {% if message.tags == 'warning' %}background-color: #fff3cd; color: #856404;{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div style="margin: 20px 0;">
+        <h3>使用说明</h3>
+        <ol>
+            <li>Excel文件必须包含以下列：<strong>学号、姓名、性别、专业、所在学院、联系电话</strong></li>
+            <li>第一行为表头，从第二行开始为数据</li>
+            <li>如果学号已存在，将自动更新该学生的指导教师</li>
+            <li>如果学号不存在，将创建新学生账号（默认密码为学号）</li>
+        </ol>
+        
+        <h4 style="margin-top: 20px;">Excel模板示例：</h4>
+        <table style="border-collapse: collapse; margin: 10px 0;">
+            <thead>
+                <tr style="background-color: #f8f9fa;">
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">学号</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">姓名</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">性别</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">专业</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">所在学院</th>
+                    <th style="padding: 8px; border: 1px solid #dee2e6;">联系电话</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">20230001</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">张三</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">男</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">软件工程</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">计算机科学与工程学院</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">13800138000</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top: 30px;">
+        {% csrf_token %}
+        <div class="form-group">
+            <label>选择Excel文件（.xlsx或.xls格式）</label>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" required 
+                   style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+        </div>
+        <button type="submit" class="btn btn-success" style="margin-top: 20px; padding: 8px 20px;">开始导入</button>
+        <a href="{% url 'user_profile' %}" class="btn btn-secondary" style="margin-top: 20px; margin-left: 10px; padding: 8px 20px;">返回</a>
+    </form>
+</div>
+{% endblock %}

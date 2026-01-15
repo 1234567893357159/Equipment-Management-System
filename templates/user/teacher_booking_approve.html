@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}审批学生预约申请 - 江南大学实验室设备管理系统{% endblock %}
+
+{% block sidebar %}
+<div class="sidebar">
+    <a href="{% url 'user_home' %}">首页</a>
+    <a href="{% url 'device_list' %}">设备查询</a>
+    <a href="{% url 'booking_apply' %}">预约申请</a>
+    <a href="{% url 'my_booking' %}">我的预约</a>
+    <a href="{% url 'user_profile' %}">个人信息</a>
+    <a href="{% url 'teacher_booking_approve' %}" class="active">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>审批我的学生预约申请</h2>
+    <p style="color: #666; margin-bottom: 20px;">
+        此页面仅显示指定您为指导教师的待审批预约申请。只有当学生在预约时选择了您作为指导教师，且状态为"待指导教师审批"时，您才能看到并审批该申请。如需查看您指导的学生的所有申请记录，请前往 <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a> 页面。
+    </p>
+    {% if messages %}
+        {% for message in messages %}
+            <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
+                {% if message.tags == 'success' %}background-color: #d4edda; color: #155724;{% endif %}
+                {% if message.tags == 'error' %}background-color: #f8d7da; color: #721c24;{% endif %}
+                {% if message.tags == 'warning' %}background-color: #fff3cd; color: #856404;{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <thead>
+            <tr style="background-color: #f8f9fa;">
+                <th style="padding: 8px; border: 1px solid #dee2e6;">预约编号</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">学生姓名</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">学号</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">设备编号</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">预约日期</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">预约时段</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">借用用途</th>
+                <th style="padding: 8px; border: 1px solid #dee2e6;">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for booking in bookings %}
+            <tr>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_code }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.applicant.name }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.applicant.user_code }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.device_code }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_date }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.time_slot }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.purpose|default:"无" }}</td>
+                <td style="padding: 8px; border: 1px solid #dee2e6;">
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="booking_id" value="{{ booking.id }}">
+                        <button type="submit" name="action" value="approve" class="btn btn-success btn-sm">批准</button>
+                        <button type="submit" name="action" value="reject" class="btn btn-danger btn-sm" style="margin-left: 5px;">拒绝</button>
+                        <textarea name="comment" placeholder="审批备注（可选）" style="width: 100%; margin-top: 5px; padding: 5px;" rows="2"></textarea>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="padding: 8px; border: 1px solid #dee2e6; text-align: center;">暂无待审批的学生预约申请</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

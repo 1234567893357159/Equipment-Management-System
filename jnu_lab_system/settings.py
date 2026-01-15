@@ -62,8 +62,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "jnu_lab_system.multi_role_middleware.MultiRoleSessionMiddleware",  # 多角色会话支持（必须在AuthenticationMiddleware之后）
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "jnu_lab_system.middleware.StaffAccessControlMiddleware",  # 工作人员访问控制（已禁用，保留功能）
 ]
 
 ROOT_URLCONF = "jnu_lab_system.urls"
@@ -78,7 +80,9 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "jnu_lab_system.context_processors.user_info_context",  # 添加用户信息上下文处理器
             ],
+            "debug": DEBUG,  # 开发环境启用模板调试
         },
     },
 ]
@@ -132,6 +136,27 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+
+# 开发环境禁用缓存，确保代码更新后立即生效
+if DEBUG:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        }
+    }
+    # CSRF配置：开发环境使用会话存储CSRF token，避免Cookie问题
+    CSRF_USE_SESSIONS = True
+    CSRF_COOKIE_HTTPONLY = False  # 允许JavaScript访问（如果需要）
+    
+    # 会话配置：确保每个用户有独立的session，防止会话混淆
+    SESSION_COOKIE_HTTPONLY = True  # 防止JavaScript访问session cookie（安全）
+    SESSION_COOKIE_SAMESITE = 'Lax'  # 防止CSRF攻击
+    SESSION_SAVE_EVERY_REQUEST = False  # 不每次都保存session（性能优化）
+    SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # 浏览器关闭后session不立即过期
+    SESSION_COOKIE_AGE = 86400  # session过期时间：24小时（秒）
+    SESSION_COOKIE_NAME = 'sessionid'  # 明确指定session cookie名称
+    SESSION_COOKIE_SECURE = False  # 开发环境不需要HTTPS
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # 使用数据库存储session，确保每个用户独立
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

@@ -28,16 +28,45 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 
+@login_required
 def admin_home(request):
-    """管理员首页"""
+    """管理员首页 - 仅允许管理员访问"""
+    # 验证用户身份：确保request.user是正确的用户
+    if not request.user.is_authenticated:
+        from django.contrib.auth import logout
+        logout(request)
+        messages.error(request, '登录已过期，请重新登录！')
+        return redirect('user_login')
+    
+    # 验证用户是否是管理员（严格检查，不允许负责人访问）
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    # 关键修复：如果是负责人但不是管理员，必须重定向到负责人首页
+    if is_manager and not is_admin and not request.user.is_superuser:
+        messages.info(request, '您已切换到负责人界面')
+        return redirect('manager_home')
+    
+    # 如果不是管理员，重定向到对应首页或登录页
+    if not is_admin and not request.user.is_superuser:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
+        # 否则重定向到登录页
+        messages.error(request, '您不是设备管理员，无权访问此页面！')
+        return redirect('user_login')
+    
     context = {
-        'is_admin': is_admin,
-        'is_manager': is_manager,
+        'is_admin': True,  # 明确设置为True，因为已经通过验证
+        'is_manager': False,  # 管理员首页不应该显示负责人相关功能
     }
     return render(request, 'admin/home.html', context)
 
+@login_required
 def device_list(request):
     """
     用户端设备查询视图
@@ -64,14 +93,8 @@ def device_list(request):
     }
     return render(request, 'user/device_list.html', context)
 
-def booking_apply(request):
-    # 模拟提交预约申请后跳转
-    if request.method == 'POST':
-        return redirect('my_booking')
-    return render(request, 'user/booking_apply.html')
-
-def my_booking(request):
-    return render(request, 'user/my_booking.html')
+# 注意：booking_apply 和 my_booking 视图函数已移至 booking/views.py
+# 这里不再需要这些函数，避免与 booking/views.py 中的函数冲突
 
 def generate_report_data(report_type, start_date, end_date):
     """生成报表数据"""
@@ -174,7 +197,28 @@ def generate_report_data(report_type, start_date, end_date):
 @login_required
 @login_required
 def report_stat(request):
-    """报表统计页面"""
+    """报表统计页面 - 仅允许管理员访问"""
+    # 验证用户是否是管理员（严格检查，不允许负责人访问）
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    # 关键修复：如果是负责人但不是管理员，重定向到负责人报表页面
+    if is_manager and not is_admin and not request.user.is_superuser:
+        messages.info(request, '负责人请使用负责人报表页面')
+        return redirect('manager_report_stat')
+    
+    # 如果不是管理员，重定向到对应首页或登录页
+    if not is_admin and not request.user.is_superuser:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
+        messages.error(request, '您不是设备管理员，无权访问此页面！')
+        return redirect('user_login')
+    
     # 获取已生成的报表列表
     reports = Report.objects.all().order_by('-generated_at')[:20]
     
@@ -294,6 +338,32 @@ def report_stat(request):
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
     
+    # 处理报表删除请求
+    if request.method == 'POST' and 'delete_report' in request.POST:
+        delete_report_id = request.POST.get('delete_report')
+        try:
+            report = Report.objects.get(id=delete_report_id)
+            report_name = report.report_name
+            report.delete()
+            messages.success(request, f'报表【{report_name}】已成功删除！')
+            # 如果删除的是当前查看的报表，清除view参数
+            if str(report_id) == str(delete_report_id):
+                return redirect('report_stat')
+        except Report.DoesNotExist:
+            messages.error(request, '报表不存在！')
+        except Exception as e:
+            messages.error(request, f'删除报表失败：{str(e)}')
+        # 保留查询参数
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        redirect_url = reverse('report_stat')
+        query_params = request.GET.copy()
+        if 'view' in query_params and str(query_params['view']) == str(delete_report_id):
+            del query_params['view']
+        if query_params:
+            redirect_url += '?' + query_params.urlencode()
+        return HttpResponseRedirect(redirect_url)
+    
     context = {
         'reports': reports,
         'current_report': current_report,
@@ -303,6 +373,31 @@ def report_stat(request):
         'is_manager': is_manager,
     }
     return render(request, 'admin/report_stat.html', context)
+
+@login_required
+def delete_report(request, report_id):
+    """删除报表（GET方式，带确认）"""
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    
+    try:
+        report = Report.objects.get(id=report_id)
+        report_name = report.report_name
+        report.delete()
+        messages.success(request, f'报表【{report_name}】已成功删除！')
+    except Report.DoesNotExist:
+        messages.error(request, '报表不存在！')
+    except Exception as e:
+        messages.error(request, f'删除报表失败：{str(e)}')
+    
+    # 保留查询参数，避免跳转错误
+    redirect_url = reverse('report_stat')
+    query_params = request.GET.copy()
+    if 'view' in query_params:
+        del query_params['view']  # 删除view参数，因为报表已删除
+    if query_params:
+        redirect_url += '?' + query_params.urlencode()
+    return HttpResponseRedirect(redirect_url)
 
 @login_required
 def export_report_csv(request, report_id):
@@ -419,13 +514,27 @@ def export_report_csv(request, report_id):
 # 1. 管理员审批页面
 @login_required
 def booking_approve(request):
-    """设备预约审批（管理员）"""
-    # 校验是否是管理员/负责人
+    """设备预约审批（管理员） - 仅允许管理员访问"""
+    # 校验是否是管理员（严格检查，不允许负责人访问管理员审批页面）
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
-    if not is_admin and not is_manager:
+    
+    # 关键修复：如果是负责人但不是管理员，重定向到负责人审批页面
+    if is_manager and not is_admin and not request.user.is_superuser:
+        messages.info(request, '负责人请使用负责人审批页面')
+        return redirect('manager_booking_approve')
+    
+    # 如果不是管理员，重定向到对应首页或登录页
+    if not is_admin and not request.user.is_superuser:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
         messages.error(request, '你无审批权限！')
-        return redirect('manager_home')
+        return redirect('user_login')
     
     # 获取筛选条件
     user_type_filter = request.GET.get('user_type', 'all')
@@ -469,7 +578,14 @@ def booking_approve(request):
             for booking_id in booking_ids:
                 handle_approval(request, booking_id, action)
         
-        return redirect('booking_approve')
+        # 保留查询参数（筛选条件），避免跳转错误
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        redirect_url = reverse('booking_approve')
+        query_params = request.GET.copy()
+        if query_params:
+            redirect_url += '?' + query_params.urlencode()
+        return HttpResponseRedirect(redirect_url)
     
     context = {
         'bookings': bookings,
@@ -504,9 +620,12 @@ def handle_approval(request, booking_id, action):
     # 2. 负责人审批逻辑（仅校外人员）
     elif is_manager:
         if action == 'approve':
-            booking.status = 'manager_approved'
-            # 审批通过时创建借出台账记录
-            create_borrow_ledger(booking, request.user)
+            # 校外人员：负责人批准后，需要缴费
+            booking.status = 'payment_pending'
+            # 发送缴费请求到财务处
+            from booking.finance_integration import send_payment_request_to_finance
+            payment_result = send_payment_request_to_finance(booking)
+            # 注意：实际缴费确认需要通过财务处回调接口完成
         else:
             booking.status = 'manager_rejected'
         approval_level = 'manager'
@@ -530,10 +649,34 @@ def handle_approval(request, booking_id, action):
 def create_borrow_ledger(booking, operator):
     """审批通过时创建借出台账记录"""
     try:
-        # 计算预期归还时间（基于预约日期，假设借用2小时）
-        expected_return_date = booking.booking_date  # 可以根据实际需求调整
+        from datetime import datetime, time as dt_time
+        
+        # 计算预期归还时间（基于预约日期和时段）
+        # 解析时段，获取结束时间
+        time_slot = booking.time_slot
+        end_time_str = time_slot.split('-')[1] if '-' in time_slot else '20:00'
+        end_hour, end_minute = map(int, end_time_str.split(':'))
+        
+        # 创建预期归还时间（预约日期的结束时间）
+        expected_return_date = datetime.combine(
+            booking.booking_date,
+            dt_time(end_hour, end_minute)
+        )
+        
+        # 判断设备状态：只有在预约日期是今天且当前时段正在进行时才设置为"不可用"
+        # 否则保持设备当前状态，由定时任务来管理
+        now = timezone.now()
+        today = now.date()
+        current_time = now.time()
+        
+        # 解析时段开始时间
+        start_time_str = time_slot.split('-')[0] if '-' in time_slot else '08:00'
+        start_hour, start_minute = map(int, start_time_str.split(':'))
+        slot_start_time = dt_time(start_hour, start_minute)
+        slot_end_time = dt_time(end_hour, end_minute)
         
         # 创建借出台账记录
+        # 注意：设备状态不再设置为"不可用"，时段可用性由预约情况决定
         DeviceLedger.objects.create(
             device=booking.device,
             device_name=booking.device.model,
@@ -541,16 +684,13 @@ def create_borrow_ledger(booking, operator):
             operation_type='borrow',
             operation_date=timezone.now(),
             expected_return_date=expected_return_date,
-            status_after_operation='unavailable',
+            status_after_operation=booking.device.status,  # 保持设备当前状态（正常/维修中/已报废）
             description=f'预约编号：{booking.booking_code}，用途：{booking.purpose or "无"}',
             operator=operator
         )
         
-        # 更新设备状态为不可用
-        booking.device.status = 'unavailable'
-        booking.device.save()
-        
-        print(f'已为预约 {booking.booking_code} 创建借出台账记录')
+        # 设备状态不再因为预约而改变，时段可用性通过预约情况来判断
+        print(f'已为预约 {booking.booking_code} 创建借出台账记录（预约日期：{booking.booking_date}，时段：{booking.time_slot}）')
         
     except Exception as e:
         print(f'创建台账记录失败：{str(e)}')

@@ -83,7 +83,13 @@
                     <td>{{ student.name }}</td>
                     <td>{{ student.gender }}</td>
                     <td>{{ student.major|default:"-" }}</td>
-                    <td>{{ student.advisor|default:"-" }}</td>
+                    <td>
+                        {% for advisor in student.advisors.all %}
+                            {{ advisor.name }}{% if not forloop.last %}、{% endif %}
+                        {% empty %}
+                            -
+                        {% endfor %}
+                    </td>
                     <td>{{ student.department }}</td>
                     <td>{{ student.phone }}</td>
                     <td>

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load ledger_tags %}
 
 {% block title %}设备台账列表{% endblock %}
 
@@ -71,6 +72,7 @@
                     <th style="min-width: 120px;">生产厂商</th>
                     <th style="min-width: 120px;">实验用途</th>
                     <th style="min-width: 100px;">可用状态</th>
+                    <th style="min-width: 300px;">时段可用状态（未来7天）</th>
                     <th style="min-width: 140px;">校内租用价格（元/2小时）</th>
                     <th style="min-width: 140px;">校外租用价格（元/2小时）</th>
                     <th style="min-width: 140px;">创建时间</th>
@@ -85,13 +87,48 @@
                     <td>{{ device.manufacturer }}</td>
                     <td>{{ device.purpose|default:"-" }}</td>
                     <td>{{ device.get_status_display }}</td>
+                    <td>
+                        <div style="font-size: 11px; max-width: 400px; line-height: 1.8;">
+                            {% with device_time_status|get_item:device.id as time_status %}
+                                {% if time_status %}
+                                    {% for day_info in time_status %}
+                                        <div style="margin-bottom: 4px; padding: 4px; {% if day_info.is_today %}background-color: #fff3cd; border-left: 3px solid #ffc107;{% else %}border-bottom: 1px solid #eee;{% endif %}">
+                                            <strong style="color: {% if day_info.is_today %}#ff9800{% else %}#333{% endif %};">
+                                                {% if day_info.is_today %}【今天】{% endif %}{{ day_info.date_str }}：
+                                            </strong>
+                                            {% for slot_name, slot_info in day_info.slots.items %}
+                                                {% if slot_info.available %}
+                                                    {% if slot_info.is_current %}
+                                                        <span style="color: #28a745; font-weight: bold; margin-right: 5px; padding: 2px 6px; background-color: #d4edda; border-radius: 3px;" 
+                                                              title="当前时段可用">✓{{ slot_name }}（可用）</span>
+                                                    {% else %}
+                                                        <span style="color: #28a745; margin-right: 5px;" title="{{ slot_name }}可用">○{{ slot_name }}</span>
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% if slot_info.is_current %}
+                                                        <span style="color: #dc3545; font-weight: bold; margin-right: 5px; padding: 2px 6px; background-color: #f8d7da; border-radius: 3px;" 
+                                                              title="当前时段已预约：{{ slot_info.booked_by }}（{{ slot_info.status }}）">✗{{ slot_name }}（使用中）</span>
+                                                    {% else %}
+                                                        <span style="color: #dc3545; margin-right: 5px;" 
+                                                              title="已预约：{{ slot_info.booked_by }}（{{ slot_info.status }}）预约编号：{{ slot_info.booking_code }}">●{{ slot_name }}</span>
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <span style="color: #999;">暂无数据</span>
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                    </td>
                     <td>{{ device.price_internal }}</td>
                     <td>{{ device.price_external }}</td>
                     <td>{{ device.created_at|date:"Y-m-d H:i" }}</td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="9" class="text-center">暂无设备记录</td>
+                    <td colspan="10" class="text-center">暂无设备记录</td>
                 </tr>
                 {% endfor %}
             </tbody>

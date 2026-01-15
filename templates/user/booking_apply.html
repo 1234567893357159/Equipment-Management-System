@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -28,38 +32,31 @@
     <form method="post">
         {% csrf_token %}
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div class="form-group">
+            <div class="form-group" style="grid-column: span 2;">
                 <label>设备编号</label>
-                <select name="device_id" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                <select name="device_id" required id="device_select" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
                     <option value="">请选择设备</option>
                     {% for device in devices %}
-                        <option value="{{ device.device_code }}">{{ device.device_code }} - {{ device.model }}</option>
+                        <option value="{{ device.device_code }}" {% if request.GET.device_id == device.id|stringformat:"s" %}selected{% endif %}>
+                            {{ device.device_code }} - {{ device.model }}
+                        </option>
                     {% empty %}
-                        <option value="">暂无可用设备</option>
+                        <option value="">暂无设备</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="form-group">
-                <label>设备名称/型号</label>
-                <input type="text" name="device_name" readonly 
-                       style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; background-color: #e9ecef;">
-            </div>
-            <div class="form-group">
-                <label>预约日期</label>
-                <input type="date" name="booking_date" required 
+                <label>预约日期（必须提前1-7天）</label>
+                <input type="date" name="booking_date" required id="booking_date"
                        style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                <small style="color: #666;">只能预约未来1-7天的日期</small>
             </div>
             <div class="form-group">
                 <label>预约时段（每2小时为1单位）</label>
-                <select name="time_slot" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
-                    <option value="">请选择时段</option>
-                    <option value="08:00-10:00">08:00 - 10:00</option>
-                    <option value="10:00-12:00">10:00 - 12:00</option>
-                    <option value="12:00-14:00">12:00 - 14:00</option>
-                    <option value="14:00-16:00">14:00 - 16:00</option>
-                    <option value="16:00-18:00">16:00 - 18:00</option>
-                    <option value="18:00-20:00">18:00 - 20:00</option>
+                <select name="time_slot" required id="time_slot_select" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                    <option value="">请先选择设备和日期</option>
                 </select>
+                <small style="color: #666; display: block; margin-top: 5px;">选择设备和日期后，将自动显示可用时段</small>
                 <button type="button" id="checkAvailabilityBtn" class="btn btn-info" style="margin-top: 10px; padding: 6px 12px;">
                     查询空闲
                 </button>
@@ -71,9 +68,21 @@
             </div>
             {% if user_info.user_type == 'student' %}
             <div class="form-group" style="grid-column: span 2;">
-                <label>指导教师编号</label>
-                <input type="text" name="teacher_id" placeholder="学生用户必填" required 
-                       style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                <label>指导教师</label>
+                {% if student_advisors %}
+                    <select name="teacher_id" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                        <option value="">请选择指导教师</option>
+                        {% for advisor in student_advisors %}
+                            <option value="{{ advisor.user_code }}">{{ advisor.name }}（{{ advisor.user_code }}）</option>
+                        {% endfor %}
+                    </select>
+                    <small style="color: #666;">请从您的指导教师列表中选择</small>
+                {% else %}
+                    <div style="padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404;">
+                        <strong>⚠️ 您还没有指导教师！</strong><br>
+                        请联系您的指导教师将您添加到学生列表中，然后才能进行预约申请。
+                    </div>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -83,25 +92,138 @@
 
     <!-- 所有JavaScript代码移到这里（form之后，确保DOM已加载） -->
     <script>
-        // 选择设备后自动填充设备名称（合并重复逻辑）
-        const deviceSelect = document.querySelector('select[name="device_id"]');
-        const deviceNameInput = document.querySelector('input[name="device_name"]');
-        
-        deviceSelect.addEventListener('change', function() {
-            const selectedOption = this.options[this.selectedIndex];
-            if (selectedOption.value) {
-                deviceNameInput.value = selectedOption.text.split(' - ')[1];
-            } else {
-                deviceNameInput.value = '';
-            }
-        });
+        // 获取设备选择元素
+        const deviceSelect = document.getElementById('device_select');
 
+        // 所有可能的时段
+        const allTimeSlots = [
+            { value: '08:00-10:00', label: '08:00 - 10:00' },
+            { value: '10:00-12:00', label: '10:00 - 12:00' },
+            { value: '12:00-14:00', label: '12:00 - 14:00' },
+            { value: '14:00-16:00', label: '14:00 - 16:00' },
+            { value: '16:00-18:00', label: '16:00 - 18:00' },
+            { value: '18:00-20:00', label: '18:00 - 20:00' },
+        ];
+        
+        const timeSlotSelect = document.getElementById('time_slot_select');
+        const bookingDateInput = document.getElementById('booking_date'); // 使用ID选择器，更可靠
+        
+        // 更新时段下拉列表的函数
+        function updateTimeSlots() {
+            const deviceId = deviceSelect ? deviceSelect.value : '';
+            const bookingDate = bookingDateInput ? bookingDateInput.value : '';
+            
+            console.log('updateTimeSlots被调用 - 设备:', deviceId, '日期:', bookingDate);
+            
+            // 清空当前选项
+            timeSlotSelect.innerHTML = '<option value="">正在加载...</option>';
+            
+            // 如果设备和日期都已选择，获取可用时段
+            if (deviceId && bookingDate) {
+                const url = `{% url 'get_available_time_slots' %}?device_id=${encodeURIComponent(deviceId)}&date=${encodeURIComponent(bookingDate)}`;
+                console.log('请求可用时段:', url);
+                
+                fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin'
+                })
+                    .then(response => {
+                        console.log('响应状态:', response.status, response.statusText);
+                        if (!response.ok) {
+                            // 如果是重定向（比如未登录），尝试获取响应文本
+                            if (response.status === 302 || response.status === 401) {
+                                throw new Error('请先登录');
+                            }
+                            return response.text().then(text => {
+                                console.error('响应错误:', text);
+                                throw new Error(`网络响应异常: ${response.status} ${response.statusText}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('可用时段数据:', data);
+                        if (data.error) {
+                            timeSlotSelect.innerHTML = `<option value="">错误: ${data.error}</option>`;
+                            alert('获取可用时段失败：' + data.error);
+                            return;
+                        }
+                        
+                        // 只显示可用时段
+                        if (data.available_slots && data.available_slots.length > 0) {
+                            timeSlotSelect.innerHTML = '<option value="">请选择时段</option>';
+                            data.available_slots.forEach(slot => {
+                                const option = document.createElement('option');
+                                option.value = slot;
+                                // 找到对应的标签
+                                const slotInfo = allTimeSlots.find(s => s.value === slot);
+                                option.textContent = slotInfo ? slotInfo.label : slot;
+                                timeSlotSelect.appendChild(option);
+                            });
+                        } else {
+                            timeSlotSelect.innerHTML = '<option value="">该日期无可用时段</option>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取可用时段失败：', error);
+                        timeSlotSelect.innerHTML = '<option value="">加载失败，请刷新重试</option>';
+                        // 如果获取失败，显示所有时段（降级处理，但加个提示）
+                        setTimeout(() => {
+                            if (timeSlotSelect.innerHTML.includes('加载失败')) {
+                                timeSlotSelect.innerHTML = '<option value="">请选择时段</option>';
+                                allTimeSlots.forEach(slot => {
+                                    const option = document.createElement('option');
+                                    option.value = slot.value;
+                                    option.textContent = slot.label + ' (未验证可用性)';
+                                    timeSlotSelect.appendChild(option);
+                                });
+                            }
+                        }, 1000);
+                    });
+            } else {
+                timeSlotSelect.innerHTML = '<option value="">请先选择设备和日期</option>';
+            }
+        }
+        
+        // 监听设备和日期变化，自动更新时段列表
+        if (deviceSelect) {
+            deviceSelect.addEventListener('change', updateTimeSlots);
+            // 监听input事件，确保日期输入框的值变化时也能触发
+            deviceSelect.addEventListener('input', updateTimeSlots);
+        }
+        if (bookingDateInput) {
+            bookingDateInput.addEventListener('change', updateTimeSlots);
+            // 监听input事件，确保日期输入框的值变化时也能触发
+            bookingDateInput.addEventListener('input', updateTimeSlots);
+        }
+        
+        // 页面加载完成后，如果已有选择的设备和日期，自动加载时段
+        // 由于script标签在form之后，DOM应该已经加载，可以直接执行
+        setTimeout(function() {
+            if (deviceSelect && bookingDateInput) {
+                const deviceId = deviceSelect.value;
+                const bookingDate = bookingDateInput.value;
+                if (deviceId && bookingDate) {
+                    console.log('页面加载时自动触发时段更新 - 设备:', deviceId, '日期:', bookingDate);
+                    updateTimeSlots();
+                }
+            } else {
+                console.error('无法找到设备或日期选择器:', {
+                    deviceSelect: !!deviceSelect,
+                    bookingDateInput: !!bookingDateInput
+                });
+            }
+        }, 500); // 延迟500ms确保所有元素都已加载
+        
         // 查询时段是否空闲的逻辑
         document.getElementById('checkAvailabilityBtn').addEventListener('click', function() {
             // 获取用户选择的设备、日期、时段
             const deviceId = deviceSelect.value;
-            const bookingDate = document.querySelector('input[name="booking_date"]').value;
-            const timeSlot = document.querySelector('select[name="time_slot"]').value;
+            const bookingDate = bookingDateInput.value;
+            const timeSlot = timeSlotSelect.value;
 
             // 验证必填参数
             if (!deviceId) {
@@ -137,6 +259,18 @@
                     alert('查询出错，请稍后重试');
                 });
         });
+        
+        // 设置日期选择器的限制（提前1-7天）
+        if (bookingDateInput) {
+            const today = new Date();
+            const minDate = new Date(today);
+            minDate.setDate(today.getDate() + 1);  // 明天
+            const maxDate = new Date(today);
+            maxDate.setDate(today.getDate() + 7);  // 7天后
+            
+            bookingDateInput.min = minDate.toISOString().split('T')[0];
+            bookingDateInput.max = maxDate.toISOString().split('T')[0];
+        }
     </script>
 </div>
 {% endblock %}

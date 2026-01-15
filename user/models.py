@@ -29,7 +29,15 @@ class UserInfo(models.Model):
     
     # 学生专属字段
     major = models.CharField(max_length=50, blank=True, null=True, verbose_name='专业')
-    advisor = models.CharField(max_length=50, blank=True, null=True, verbose_name='指导教师')
+    # 指导教师改为多对多关系，支持多个指导教师
+    advisors = models.ManyToManyField(
+        'self',
+        blank=True,
+        symmetrical=False,
+        limit_choices_to={'user_type': 'teacher'},
+        related_name='students',
+        verbose_name='指导教师'
+    )
     
     # 教师专属字段
     title = models.CharField(max_length=20, blank=True, null=True, verbose_name='职称')
@@ -40,6 +48,18 @@ class UserInfo(models.Model):
     company_address = models.CharField(max_length=200, blank=True, null=True, verbose_name='单位地址')
     
     is_active = models.BooleanField(default=True, verbose_name='借用资格（正常/禁用）')
+    # 注册审核状态（教师和管理员需要审核）
+    APPROVAL_STATUS_CHOICES = (
+        ('pending', '待审核'),
+        ('approved', '已通过'),
+        ('rejected', '已拒绝'),
+    )
+    approval_status = models.CharField(
+        max_length=20,
+        choices=APPROVAL_STATUS_CHOICES,
+        default='approved',  # 学生默认已通过，教师和管理员默认待审核
+        verbose_name='注册审核状态'
+    )
     create_time = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     update_time = models.DateTimeField(auto_now=True, verbose_name='更新时间')
     

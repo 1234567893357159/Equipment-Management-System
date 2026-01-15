@@ -117,6 +117,10 @@
                             <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                                 <a href="?view={{ report.id }}" class="btn btn-info" style="white-space: nowrap; flex-shrink: 0;">查看详情</a>
                                 <a href="{% url 'manager_export_report_csv' report_id=report.id %}" class="btn btn-success" style="white-space: nowrap; flex-shrink: 0;">导出</a>
+                                <a href="{% url 'manager_delete_report' report_id=report.id %}" 
+                                   class="btn btn-danger" 
+                                   style="white-space: nowrap; flex-shrink: 0;"
+                                   onclick="return confirm('确定要删除报表【{{ report.report_name }}】吗？删除后无法恢复！')">删除</a>
                             </div>
                         </td>
                     </tr>

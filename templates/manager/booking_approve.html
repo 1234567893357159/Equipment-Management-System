@@ -28,10 +28,10 @@
 
     <!-- 用户类型筛选 -->
     <div style="margin-bottom: 20px;">
-        <a href="{% url 'booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
-        <a href="{% url 'booking_approve' %}?user_type=teacher" class="btn {% if user_type_filter == 'teacher' %}btn-primary{% else %}btn-secondary{% endif %}">校内教师申请</a>
-        <a href="{% url 'booking_approve' %}?user_type=student" class="btn {% if user_type_filter == 'student' %}btn-primary{% else %}btn-secondary{% endif %}">校内学生申请</a>
-        <a href="{% url 'booking_approve' %}?user_type=external" class="btn {% if user_type_filter == 'external' %}btn-primary{% else %}btn-secondary{% endif %}">校外人员申请</a>
+        <a href="{% url 'manager_booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
+        <a href="{% url 'manager_booking_approve' %}?user_type=teacher" class="btn {% if user_type_filter == 'teacher' %}btn-primary{% else %}btn-secondary{% endif %}">校内教师申请</a>
+        <a href="{% url 'manager_booking_approve' %}?user_type=student" class="btn {% if user_type_filter == 'student' %}btn-primary{% else %}btn-secondary{% endif %}">校内学生申请</a>
+        <a href="{% url 'manager_booking_approve' %}?user_type=external" class="btn {% if user_type_filter == 'external' %}btn-primary{% else %}btn-secondary{% endif %}">校外人员申请</a>
     </div>
 
     <form method="post">
@@ -65,7 +65,17 @@
                     </td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.device_code }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_date }} {{ booking.time_slot }}</td>
-                    <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.get_status_display }}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">
+                        {% if booking.device.status == 'available' %}
+                            <span style="color: green; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% elif booking.device.status == 'maintenance' %}
+                            <span style="color: orange; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% elif booking.device.status == 'discarded' %}
+                            <span style="color: #999; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% else %}
+                            <span>{{ booking.device.get_status_display }}</span>
+                        {% endif %}
+                    </td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.get_status_display }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">
                         {% if is_admin %}

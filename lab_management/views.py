@@ -8,8 +8,13 @@ from user.forms import UserInfoForm
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import Group
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods
 from user.models import UserInfo  # 导入你的用户信息模型
+from jnu_lab_system.multi_role_session import set_role_session_user, get_user_from_role_session, clear_role_session
 
+@require_http_methods(["GET", "POST"])
+@csrf_protect
 def user_login(request):
     """系统登录视图：校验账号密码 + 角色匹配"""
     # 如果是POST请求（提交登录表单）
@@ -63,20 +68,77 @@ def user_login(request):
             })
         
         # 5. 所有校验通过：登录并跳转对应首页
-        login(request, user)
+        # 多角色支持：使用角色特定的session存储，允许同一浏览器同时登录多个角色
+        # 关键策略：
+        # 1. 将用户信息存储到角色特定的session中（多角色支持的核心）
+        # 2. 同时执行标准的login()，确保@login_required装饰器能正常工作
+        # 3. 中间件会根据URL路径优先从角色特定的session中读取用户，替换request.user
+        
+        # 将用户信息存储到角色特定的session中（多角色支持的核心）
+        role_map = {
+            'user': 'user',
+            'admin': 'admin',
+            'manager': 'manager'
+        }
+        if role in role_map:
+            set_role_session_user(request, user, role_map[role])
+        
+        # 执行标准的login()，确保@login_required装饰器能正常工作
+        # 注意：这不会清除角色特定的session，因为它们是不同的key
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        
+        # 强制刷新session，确保session被保存
+        request.session.save()
+        
+        # 根据角色跳转到对应首页
         if role == 'user':
-            return redirect('user_home')  # 普通用户首页（需自行创建）
+            return redirect('user_home')  # 普通用户首页
         elif role == 'admin':
             return redirect('admin_home')  # 设备管理员首页
         elif role == 'manager':
             return redirect('manager_home')  # 实验室负责人首页
+        else:
+            logout(request)
+            return render(request, 'login.html', {
+                'error': '角色验证失败，请重新登录！'
+            })
     
     # GET请求：显示登录页面
     return render(request, 'login.html')
 
 # 可选：退出登录视图
 def user_logout(request):
-    logout(request)
+    """退出登录 - 支持多角色，只清除当前角色的session"""
+    # 从URL路径判断角色，清除对应的角色session
+    from jnu_lab_system.multi_role_session import get_role_from_path, clear_role_session
+    
+    # 尝试从referer或当前路径判断角色
+    referer = request.META.get('HTTP_REFERER', '')
+    role = get_role_from_path(referer) or get_role_from_path(request.path)
+    
+    if role:
+        # 清除当前角色的session
+        clear_role_session(request, role)
+        # 如果还有其他角色登录，不清除标准session
+        # 否则清除标准session
+        has_other_roles = False
+        for r in ['user', 'admin', 'manager']:
+            if r != role:
+                role_user = get_user_from_role_session(request, r)
+                if role_user:
+                    has_other_roles = True
+                    break
+        
+        if not has_other_roles:
+            # 没有其他角色登录，清除标准session
+            logout(request)
+    else:
+        # 无法判断角色，清除所有session
+        logout(request)
+        # 清除所有角色特定的session
+        for r in ['user', 'admin', 'manager']:
+            clear_role_session(request, r)
+    
     return redirect('user_login')
 
 # ---------------------- 管理员视图 ----------------------

@@ -101,7 +101,7 @@ class StudentForm(forms.ModelForm):
     """学生信息表单（用于教师添加/编辑学生）"""
     class Meta:
         model = UserInfo
-        fields = ['user_code', 'name', 'gender', 'department', 'phone', 'major', 'advisor']
+        fields = ['user_code', 'name', 'gender', 'department', 'phone', 'major']
         labels = {
             'user_code': '学号',
             'name': '姓名',
@@ -109,7 +109,6 @@ class StudentForm(forms.ModelForm):
             'department': '所在学院',
             'phone': '联系电话',
             'major': '专业',
-            'advisor': '指导教师',
         }
         widgets = {
             'user_code': forms.TextInput(attrs={'class': 'form-control'}),
@@ -118,17 +117,12 @@ class StudentForm(forms.ModelForm):
             'department': forms.TextInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'major': forms.TextInput(attrs={'class': 'form-control'}),
-            'advisor': forms.TextInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
         }
     
     def __init__(self, *args, **kwargs):
-        # 获取教师姓名并设置到表单中
+        # 获取教师信息（不再需要teacher_name，因为通过多对多关系管理）
         teacher_name = kwargs.pop('teacher_name', None)
         super().__init__(*args, **kwargs)
-        
-        if teacher_name:
-            # 设置指导教师字段为教师姓名，并设为只读
-            self.fields['advisor'].initial = teacher_name
         
         # 如果是编辑模式（有实例且已保存），将学号字段设为只读
         if self.instance and self.instance.pk:

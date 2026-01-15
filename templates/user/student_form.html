@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -58,9 +62,21 @@
                 </div>
                 
                 <div class="form-group">
-                    <label>{{ form.advisor.label }}</label>
-                    {{ form.advisor }}
-                    <small style="color: #666;">自动填充为当前教师姓名</small>
+                    <label>指导教师</label>
+                    <div style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f8f9fa;">
+                        {% if student %}
+                            {% for advisor in student.advisors.all %}
+                                <span style="display: inline-block; padding: 4px 8px; margin: 2px; background-color: #e9ecef; border-radius: 3px;">
+                                    {{ advisor.name }}（{{ advisor.user_code }}）
+                                </span>
+                            {% empty %}
+                                <span style="color: #999;">暂无指导教师</span>
+                            {% endfor %}
+                        {% else %}
+                            <span style="color: #999;">学生创建后，将由当前教师自动添加为指导教师</span>
+                        {% endif %}
+                    </div>
+                    <small style="color: #666;">指导教师由教师管理，学生可以有多个指导教师</small>
                 </div>
             </div>
             

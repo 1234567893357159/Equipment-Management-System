@@ -18,9 +18,14 @@ from openpyxl.utils import get_column_letter
 def check_ledger_permission(view_func):
     """权限检查装饰器：只允许设备管理员和实验室负责人访问台账"""
     def wrapper(request, *args, **kwargs):
+        # 确保用户已登录
+        if not request.user.is_authenticated:
+            messages.error(request, '请先登录！')
+            return redirect('user_login')
+        
         is_admin = request.user.groups.filter(name='设备管理员').exists()
         is_manager = request.user.groups.filter(name='实验室负责人').exists()
-        if not is_admin and not is_manager:
+        if not is_admin and not is_manager and not request.user.is_superuser:
             messages.error(request, '您无权访问台账模块！')
             # 尝试重定向到管理员首页，如果不存在则重定向到登录页
             try:
@@ -44,8 +49,20 @@ def ledger_home(request):
 
 def get_user_role_context(request):
     """辅助函数：获取用户角色信息"""
-    is_admin = request.user.groups.filter(name='设备管理员').exists()
-    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    # 多角色支持：如果使用了角色特定的session，从那里获取用户
+    from jnu_lab_system.multi_role_session import get_role_from_path, get_user_from_role_session
+    
+    role = get_role_from_path(request.path)
+    current_user = request.user
+    
+    # 如果路径匹配某个角色，尝试从角色特定的session中获取用户
+    if role:
+        role_user = get_user_from_role_session(request, role)
+        if role_user:
+            current_user = role_user
+    
+    is_admin = current_user.groups.filter(name='设备管理员').exists() if current_user.is_authenticated else False
+    is_manager = current_user.groups.filter(name='实验室负责人').exists() if current_user.is_authenticated else False
     return {
         'is_admin': is_admin,
         'is_manager': is_manager,
@@ -55,6 +72,7 @@ def get_user_role_context(request):
 @check_ledger_permission
 def device_ledger_list(request):
     """设备台账列表视图：显示所有设备信息"""
+    from datetime import date, timedelta
     devices = Device.objects.all().order_by('device_code')
 
     # 筛选
@@ -74,6 +92,88 @@ def device_ledger_list(request):
     if status:
         devices = devices.filter(status=status)
 
+    # 为每个设备计算时段可用状态（今天和未来6天，共7天）
+    from datetime import date, timedelta, datetime
+    today = date.today()
+    now = datetime.now()
+    time_slots = ['上午', '下午', '全天']
+    device_time_status = {}
+    
+    # 获取所有相关预约（一次性查询，提高性能）
+    future_date = today + timedelta(days=6)
+    active_bookings = Booking.objects.filter(
+        device__in=devices,
+        booking_date__gte=today,
+        booking_date__lte=future_date,
+        status__in=['pending', 'admin_approved', 'manager_approved', 'payment_pending', 'teacher_pending']
+    ).select_related('device', 'applicant')
+    
+    # 构建设备时段状态字典
+    for device in devices:
+        device_time_status[device.id] = []
+        for day_offset in range(7):
+            check_date = today + timedelta(days=day_offset)
+            is_today = (check_date == today)
+            day_status = {
+                'date': check_date,
+                'date_str': check_date.strftime('%m-%d'),
+                'is_today': is_today,
+                'slots': {}
+            }
+            
+            for slot in time_slots:
+                # 查找该设备在该日期该时段的预约
+                booking = active_bookings.filter(
+                    device=device,
+                    booking_date=check_date,
+                    time_slot=slot
+                ).first()
+                
+                if booking:
+                    # 判断当前时段是否正在进行中（仅今天）
+                    is_current = False
+                    if is_today:
+                        hour = now.hour
+                        if slot == '上午' and 8 <= hour < 12:
+                            is_current = True
+                        elif slot == '下午' and 12 <= hour < 18:
+                            is_current = True
+                        elif slot == '全天':
+                            is_current = True
+                    
+                    day_status['slots'][slot] = {
+                        'available': False,
+                        'booked_by': booking.applicant.name,
+                        'status': booking.get_status_display(),
+                        'is_current': is_current,
+                        'booking_code': booking.booking_code
+                    }
+                else:
+                    # 判断当前时段是否可用（仅今天）
+                    is_current = False
+                    is_available_now = False
+                    if is_today:
+                        hour = now.hour
+                        if slot == '上午' and 8 <= hour < 12:
+                            is_current = True
+                            is_available_now = True
+                        elif slot == '下午' and 12 <= hour < 18:
+                            is_current = True
+                            is_available_now = True
+                        elif slot == '全天':
+                            is_current = True
+                            is_available_now = True
+                    
+                    day_status['slots'][slot] = {
+                        'available': True,
+                        'booked_by': None,
+                        'status': None,
+                        'is_current': is_current,
+                        'is_available_now': is_available_now
+                    }
+            
+            device_time_status[device.id].append(day_status)
+
     # 分页
     paginator = Paginator(devices, 20)  # 每页20条记录
     page_number = request.GET.get('page')
@@ -83,6 +183,9 @@ def device_ledger_list(request):
         'page_obj': page_obj,
         'status_choices': DEVICE_STATUS,
         'total_count': devices.count(),
+        'device_time_status': device_time_status,
+        'today': today,
+        'time_slots': time_slots,
     }
     context.update(get_user_role_context(request))
     return render(request, 'ledger/device_info_ledger_list.html', context)
@@ -199,7 +302,8 @@ def student_ledger_list(request):
 
     advisor = request.GET.get('advisor')
     if advisor:
-        students = students.filter(advisor__icontains=advisor)
+        # 通过多对多关系查询指导教师
+        students = students.filter(advisors__name__icontains=advisor).distinct()
 
     # 分页
     paginator = Paginator(students, 20)
@@ -534,7 +638,8 @@ def export_student_ledger_csv(request):
 
     advisor = request.GET.get('advisor')
     if advisor:
-        students = students.filter(advisor__icontains=advisor)
+        # 通过多对多关系查询指导教师
+        students = students.filter(advisors__name__icontains=advisor).distinct()
 
     # 创建Excel工作簿
     wb = Workbook()
@@ -566,7 +671,7 @@ def export_student_ledger_csv(request):
             student.name,
             student.gender,
             student.major or '-',
-            student.advisor or '-',
+            ', '.join([a.name for a in student.advisors.all()]) or '-',
             student.department,
             student.phone,
             device_str,
@@ -763,7 +868,7 @@ def export_booking_ledger_csv(request):
             booking_date,
             booking.time_slot,
             booking.purpose or '-',
-            booking.teacher_id or '-',
+            booking.teacher.user_code if booking.teacher else '-',
             booking.get_status_display(),
             create_time,
             update_time,

@@ -9,6 +9,8 @@ from django.contrib.auth.hashers import make_password  # 密码加密
 from django.contrib.auth.models import User, Group, Permission
 
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_protect
+from django.shortcuts import redirect
 from user.models import UserInfo
 from booking.models import Booking, ApprovalRecord
 from django.contrib import messages
@@ -20,18 +22,64 @@ from labadmin.views import handle_approval
 
 # Create your views here.
 # ---------------------- 负责人视图 ----------------------
+@login_required
 def manager_home(request):
+    """负责人首页 - 仅允许负责人访问"""
+    # 验证用户身份：确保request.user是正确的用户
+    if not request.user.is_authenticated:
+        from django.contrib.auth import logout
+        logout(request)
+        messages.error(request, '登录已过期，请重新登录！')
+        return redirect('user_login')
+    
+    # 验证用户是否是负责人（严格检查，不允许管理员访问）
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    
+    # 关键修复：如果是管理员但不是负责人，必须重定向到管理员首页
+    if is_admin and not is_manager and not request.user.is_superuser:
+        messages.info(request, '您已切换到管理员界面')
+        return redirect('admin_home')
+    
+    # 如果不是负责人，重定向到对应首页或登录页
+    if not is_manager:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
+        # 否则重定向到登录页
+        messages.error(request, '您不是实验室负责人，无权访问此页面！')
+        return redirect('user_login')
+    
     return render(request, 'manager/home.html')
 
 @login_required
+@csrf_protect
 def booking_approve(request):
-    """设备预约审批（管理员/负责人）"""
-    # 校验是否是管理员/负责人
+    """设备预约审批（负责人） - 仅允许负责人访问"""
+    # 校验是否是负责人（严格检查，不允许管理员访问负责人审批页面）
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
-    if not is_admin and not is_manager:
+    
+    # 关键修复：如果是管理员但不是负责人，重定向到管理员审批页面
+    if is_admin and not is_manager and not request.user.is_superuser:
+        messages.info(request, '管理员请使用管理员审批页面')
+        return redirect('booking_approve')  # 管理员审批页面
+    
+    # 如果不是负责人，重定向到对应首页或登录页
+    if not is_manager:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
         messages.error(request, '你无审批权限！')
-        return redirect('manager_home')
+        return redirect('user_login')
     
     # 获取筛选条件
     user_type_filter = request.GET.get('user_type', 'all')
@@ -74,7 +122,14 @@ def booking_approve(request):
             for booking_id in booking_ids:
                 handle_approval(request, booking_id, action)
         
-        return redirect('booking_approve')
+        # 保留查询参数（筛选条件），避免跳转错误
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        redirect_url = reverse('manager_booking_approve')
+        query_params = request.GET.copy()
+        if query_params:
+            redirect_url += '?' + query_params.urlencode()
+        return HttpResponseRedirect(redirect_url)
     
     context = {
         'bookings': bookings,
@@ -85,15 +140,35 @@ def booking_approve(request):
     return render(request, 'manager/booking_approve.html', context)
 
 @login_required
+@csrf_protect
 def manager_report_stat(request):
-    """负责人报表统计页面（可以查看和生成）"""
+    """负责人报表统计页面 - 仅允许负责人访问"""
+    # 验证用户是否是负责人（严格检查，不允许管理员访问）
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    
+    # 关键修复：如果是管理员但不是负责人，重定向到管理员报表页面
+    if is_admin and not is_manager and not request.user.is_superuser:
+        messages.info(request, '管理员请使用管理员报表页面')
+        return redirect('report_stat')
+    
+    # 如果不是负责人，重定向到对应首页或登录页
+    if not is_manager:
+        # 如果是普通用户，重定向到普通用户首页
+        try:
+            from user.models import UserInfo
+            user_info = UserInfo.objects.get(auth_user=request.user)
+            return redirect('user_home')
+        except:
+            pass
+        messages.error(request, '您不是实验室负责人，无权访问此页面！')
+        return redirect('user_login')
+    
     from labadmin.models import Report
     from labadmin.views import generate_report_data
-    from django.contrib import messages
-    from django.shortcuts import redirect
     from datetime import datetime, timedelta, date
     from decimal import Decimal
-    
+
     # 获取已生成的报表列表
     reports = Report.objects.all().order_by('-generated_at')[:20]
     
@@ -224,6 +299,33 @@ def manager_report_stat(request):
     return render(request, 'manager/report_stat.html', context)
 
 @login_required
+def manager_delete_report(request, report_id):
+    """删除报表"""
+    from labadmin.models import Report
+    
+    try:
+        report = Report.objects.get(id=report_id)
+        report_name = report.report_name
+        report.delete()
+        messages.success(request, f'报表【{report_name}】已成功删除！')
+    except Report.DoesNotExist:
+        messages.error(request, '报表不存在！')
+    except Exception as e:
+        messages.error(request, f'删除报表失败：{str(e)}')
+    
+    # 保留查询参数，避免跳转错误
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    redirect_url = reverse('manager_report_stat')
+    # 保留原有的筛选条件
+    query_params = request.GET.copy()
+    if 'view' in query_params:
+        del query_params['view']  # 删除view参数，因为报表已删除
+    if query_params:
+        redirect_url += '?' + query_params.urlencode()
+    return HttpResponseRedirect(redirect_url)
+
+@login_required
 def manager_export_report_csv(request, report_id):
     """负责人导出报表为Excel文件（.xlsx）"""
     from django.http import HttpResponse
@@ -337,6 +439,8 @@ def manager_export_report_csv(request, report_id):
     return response
 
 # -----------------------s--- 1. 用户列表（含搜索、筛选） --------------------------
+@login_required
+@csrf_protect
 def user_manage(request):
     """
     用户管理主页面：展示所有用户，支持按姓名/编号搜索、按类型筛选
@@ -345,71 +449,185 @@ def user_manage(request):
     # 1. 处理筛选和搜索（原有逻辑不变）
     user_type = request.GET.get('user_type', '')
     keyword = request.GET.get('keyword', '')
+    approval_status = request.GET.get('approval_status', '')
     # 使用annotate添加借用次数统计
     from django.db.models import Count
     user = UserInfo.objects.annotate(booking_count=Count('booking'))
+    # 获取所有管理员用户（不关联UserInfo的User对象）
+    admin_users = User.objects.filter(groups__name='设备管理员').exclude(
+        id__in=UserInfo.objects.values_list('auth_user_id', flat=True)
+    )
+    
     if user_type and user_type in ['student', 'teacher', 'external']:
         user = user.filter(user_type=user_type)
+    elif user_type == 'admin':
+        # 筛选管理员用户，不显示UserInfo用户
+        user = UserInfo.objects.none()  # 空查询集
     if keyword:
-        user = user.filter(Q(name__icontains=keyword) | Q(user_code__icontains=keyword))
+        if user_type != 'admin':
+            user = user.filter(Q(name__icontains=keyword) | Q(user_code__icontains=keyword))
+        else:
+            admin_users = admin_users.filter(Q(username__icontains=keyword) | Q(first_name__icontains=keyword))
+    if approval_status == 'pending':
+        user = user.filter(approval_status='pending')
     
     # 2. 处理新增用户（POST请求）【核心修改：用户名=用户编号，密码=用户编号】
-    if request.method == 'POST':
-        form = UserInfoForm(request.POST)
-        if form.is_valid():
-            # 先保存UserInfo（不提交到数据库）
-            user_info = form.save(commit=False)
+    # 注意：先检查是否是审核操作，如果不是，再处理新增用户
+    if request.method == 'POST' and 'approve_user' not in request.POST:
+        # 检查是否是创建管理员
+        create_admin = request.POST.get('create_admin', '') == 'true'
+        
+        if create_admin:
+            # 创建管理员用户（不创建UserInfo）
+            admin_username = request.POST.get('admin_username', '').strip()
+            admin_name = request.POST.get('admin_name', '').strip()
             
-            # 【关键修改】用户名 = 用户编号（学号/工号），密码 = 用户编号
-            username = user_info.user_code  # 账号用编号（如20230001/T001/O001）
-            password = make_password(user_info.user_code)  # 密码用编号（加密）
-            
-            # 检查用户名是否已存在（用户编号本身已设置unique=True，此处双重保险）
-            if User.objects.filter(username=username).exists():
-                # 理论上不会触发，因为user_code是唯一的
-                form.add_error('user_code', '该用户编号已作为登录账号存在！')
-                return render(request, 'manager/user_manage.html', {
-                    'user': user,
-                    'keyword': keyword,
-                    'user_type': user_type,
-                    'form': form,
-                })
-            
-            # 创建登录账号
-            auth_user = User.objects.create(
-                username=username,          # 账号=用户编号
-                password=password,          # 密码=用户编号（加密）
-                first_name=user_info.name,  # 姓名（可选）
-                is_active=user_info.is_active  # 借用资格=账号是否激活
-            )
-            
-            # 关联登录账号到UserInfo，并加入普通用户组
-            user_info.auth_user = auth_user
-            user_info.save()
-            
-            # 可选：将普通用户加入「普通用户」组
-            user_group = Group.objects.get(name='普通用户')
-            auth_user.groups.add(user_group)
-            auth_user.save()
-            
-            messages.success(request, f'用户【{user_info.name}】创建成功！')
-            return redirect('user_manage')
+            if not admin_username or not admin_name:
+                messages.error(request, '管理员用户名和姓名不能为空！')
+            elif User.objects.filter(username=admin_username).exists():
+                messages.error(request, f'用户名【{admin_username}】已存在！')
+            else:
+                # 创建管理员用户
+                admin_user = User.objects.create(
+                    username=admin_username,
+                    password=make_password(admin_username),  # 初始密码=用户名
+                    first_name=admin_name,
+                    is_active=True,
+                    is_staff=True  # 管理员需要is_staff=True
+                )
+                # 添加到设备管理员组
+                admin_group = Group.objects.get(name='设备管理员')
+                admin_user.groups.add(admin_group)
+                admin_user.save()
+                
+                messages.success(request, f'管理员【{admin_name}】创建成功！用户名：{admin_username}，初始密码：{admin_username}')
+                # 保留查询参数
+                from django.http import HttpResponseRedirect
+                from django.urls import reverse
+                redirect_url = reverse('user_manage')
+                query_params = request.GET.copy()
+                if query_params:
+                    redirect_url += '?' + query_params.urlencode()
+                return HttpResponseRedirect(redirect_url)
+        else:
+            # 创建普通用户（原有逻辑）
+            form = UserInfoForm(request.POST)
+            if form.is_valid():
+                # 先保存UserInfo（不提交到数据库）
+                user_info = form.save(commit=False)
+                
+                # 【关键修改】用户名 = 用户编号（学号/工号），密码 = 用户编号
+                username = user_info.user_code  # 账号用编号（如20230001/T001/O001）
+                password = make_password(user_info.user_code)  # 密码用编号（加密）
+                
+                # 检查用户名是否已存在（用户编号本身已设置unique=True，此处双重保险）
+                if User.objects.filter(username=username).exists():
+                    # 理论上不会触发，因为user_code是唯一的
+                    form.add_error('user_code', '该用户编号已作为登录账号存在！')
+                    return render(request, 'manager/user_manage.html', {
+                        'users': user,
+                        'admin_users': admin_users if user_type == 'admin' else [],
+                        'keyword': keyword,
+                        'user_type': user_type,
+                        'form': form,
+                        'total_users': user.count() + (admin_users.count() if user_type == 'admin' else 0),
+                        'active_users': user.filter(is_active=True).count() + (admin_users.filter(is_active=True).count() if user_type == 'admin' else 0),
+                        'inactive_users': user.filter(is_active=False).count() + (admin_users.filter(is_active=False).count() if user_type == 'admin' else 0),
+                        'users_with_bookings': user.filter(booking_count__gt=0).count(),
+                        'pending_approvals': UserInfo.objects.filter(approval_status='pending').count(),
+                    })
+                
+                # 创建登录账号
+                auth_user = User.objects.create(
+                    username=username,          # 账号=用户编号
+                    password=password,          # 密码=用户编号（加密）
+                    first_name=user_info.name,  # 姓名（可选）
+                    is_active=user_info.is_active  # 借用资格=账号是否激活
+                )
+                
+                # 关联登录账号到UserInfo，并加入普通用户组
+                user_info.auth_user = auth_user
+                user_info.save()
+                
+                # 可选：将普通用户加入「普通用户」组
+                user_group = Group.objects.get(name='普通用户')
+                auth_user.groups.add(user_group)
+                auth_user.save()
+                
+                messages.success(request, f'用户【{user_info.name}】创建成功！')
+                # 保留查询参数（筛选条件），避免跳转错误
+                from django.http import HttpResponseRedirect
+                from django.urls import reverse
+                redirect_url = reverse('user_manage')
+                query_params = request.GET.copy()
+                if query_params:
+                    redirect_url += '?' + query_params.urlencode()
+                return HttpResponseRedirect(redirect_url)
     else:
         form = UserInfoForm()
     
-    # 3. 准备上下文（原有逻辑不变）
+    # 3. 处理用户审核（POST请求，来自审核按钮）
+    # 注意：模板中按钮的 name="approve_user" value="approve/reject"，所以这里需要检查 approve_user 的值
+    if request.method == 'POST' and 'approve_user' in request.POST:
+        user_id = request.POST.get('user_id')
+        action = request.POST.get('approve_user')  # 获取按钮的value，应该是 'approve' 或 'reject'
+        
+        try:
+            user_to_approve = UserInfo.objects.get(id=user_id)
+            if action == 'approve':
+                user_to_approve.approval_status = 'approved'
+                user_to_approve.is_active = True
+                if user_to_approve.auth_user:
+                    user_to_approve.auth_user.is_active = True
+                    user_to_approve.auth_user.save()
+                user_to_approve.save()  # 确保保存状态
+                messages.success(request, f'已通过用户 {user_to_approve.name} 的注册审核')
+            elif action == 'reject':
+                user_to_approve.approval_status = 'rejected'
+                user_to_approve.is_active = False
+                if user_to_approve.auth_user:
+                    user_to_approve.auth_user.is_active = False
+                    user_to_approve.auth_user.save()
+                user_to_approve.save()  # 确保保存状态
+                messages.success(request, f'已拒绝用户 {user_to_approve.name} 的注册审核')
+            else:
+                messages.error(request, f'无效的操作：{action}')
+        except UserInfo.DoesNotExist:
+            messages.error(request, '用户不存在')
+        except Exception as e:
+            messages.error(request, f'审批操作失败：{str(e)}')
+        
+        # 保留查询参数（筛选条件），避免跳转错误
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        redirect_url = reverse('user_manage')
+        query_params = request.GET.copy()
+        if query_params:
+            redirect_url += '?' + query_params.urlencode()
+        return HttpResponseRedirect(redirect_url)
+    
+    # 4. 准备上下文（原有逻辑不变）
     # 获取用户角色信息
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
     
-    # 统计信息
-    total_users = user.count()
-    active_users = user.filter(is_active=True).count()
-    inactive_users = user.filter(is_active=False).count()
-    users_with_bookings = user.filter(booking_count__gt=0).count()
+    # 统计信息（包含管理员）
+    if user_type == 'admin':
+        total_users = admin_users.count()
+        active_users = admin_users.filter(is_active=True).count()
+        inactive_users = admin_users.filter(is_active=False).count()
+        users_with_bookings = 0  # 管理员没有借用记录
+    else:
+        total_users = user.count()
+        active_users = user.filter(is_active=True).count()
+        inactive_users = user.filter(is_active=False).count()
+        users_with_bookings = user.filter(booking_count__gt=0).count()
+    
+    pending_approvals = UserInfo.objects.filter(approval_status='pending').count()
     
     context = {
         'users': user,
+        'admin_users': admin_users if user_type == 'admin' else [],
         'keyword': keyword,
         'user_type': user_type,
         'form': form,
@@ -419,10 +637,13 @@ def user_manage(request):
         'active_users': active_users,
         'inactive_users': inactive_users,
         'users_with_bookings': users_with_bookings,
+        'pending_approvals': pending_approvals,
     }
     return render(request, 'manager/user_manage.html', context)
 
 # -------------------------- 2. 编辑用户 --------------------------
+@login_required
+@csrf_protect
 def user_edit(request, pk):
     """编辑用户信息"""
     user_info = get_object_or_404(UserInfo, pk=pk)
@@ -432,7 +653,11 @@ def user_edit(request, pk):
         if form.is_valid():
             user_info = form.save(commit=False)
             
-            # 【关键】如果修改了用户编号，同步更新登录账号的用户名
+            # 【关键】用户编号不可修改，保持原有编号
+            original_user_info = UserInfo.objects.get(pk=user_info.pk)
+            user_info.user_code = original_user_info.user_code  # 强制保持原编号
+            
+            # 确保登录账号的用户名与用户编号一致
             if user_info.auth_user and user_info.auth_user.username != user_info.user_code:
                 user_info.auth_user.username = user_info.user_code
                 user_info.auth_user.save()
@@ -449,7 +674,18 @@ def user_edit(request, pk):
                 user_info.auth_user.save()
             
             user_info.save()
-            return redirect('user_manage')
+            messages.success(request, f'用户【{user_info.name}】信息已更新！')
+            # 保留查询参数，避免跳转错误
+            from django.http import HttpResponseRedirect
+            from django.urls import reverse
+            redirect_url = reverse('user_manage')
+            query_params = request.GET.copy()
+            if query_params:
+                redirect_url += '?' + query_params.urlencode()
+            return HttpResponseRedirect(redirect_url)
+        else:
+            # 表单验证失败
+            messages.error(request, '表单填写有误，请检查后重新提交！')
     else:
         form = UserInfoForm(instance=user_info)
     
@@ -466,6 +702,7 @@ def user_edit(request, pk):
     return render(request, 'manager/user_edit.html', context)
 
 # -------------------------- 3. 删除用户 --------------------------
+@login_required
 def user_delete(request, pk):
     """删除用户（物理删除，确保同时删除关联的登录账号）"""
     # 获取要删除的用户扩展信息
@@ -478,9 +715,17 @@ def user_delete(request, pk):
     # 再删除自定义的UserInfo记录
     user_info.delete()
     
-    return redirect('user_manage')
+    # 保留查询参数，避免跳转错误
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    redirect_url = reverse('user_manage')
+    query_params = request.GET.copy()
+    if query_params:
+        redirect_url += '?' + query_params.urlencode()
+    return HttpResponseRedirect(redirect_url)
 
 # -------------------------- 4. 快速切换用户状态（禁用/启用） --------------------------
+@login_required
 def user_toggle_status(request, pk):
     """快速切换用户的借用资格（无需进入编辑页）"""
     user = get_object_or_404(UserInfo, pk=pk)
@@ -493,7 +738,38 @@ def user_toggle_status(request, pk):
         user.auth_user.save()
     
     messages.success(request, f'用户【{user.name}】状态已更新为{"正常" if user.is_active else "禁用"}')
-    return redirect('user_manage')
+    # 保留查询参数，避免跳转错误
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    redirect_url = reverse('user_manage')
+    query_params = request.GET.copy()
+    if query_params:
+        redirect_url += '?' + query_params.urlencode()
+    return HttpResponseRedirect(redirect_url)
+
+# -------------------------- 4.5. 快速切换管理员状态（禁用/启用） --------------------------
+@login_required
+def user_toggle_admin_status(request, pk):
+    """快速切换管理员的激活状态（无需进入编辑页）"""
+    admin_user = get_object_or_404(User, pk=pk)
+    # 验证是否是管理员
+    if not admin_user.groups.filter(name='设备管理员').exists():
+        messages.error(request, '该用户不是设备管理员！')
+        return redirect('user_manage')
+    
+    admin_user.is_active = not admin_user.is_active  # 取反：正常→禁用，禁用→正常
+    admin_user.save()
+    
+    messages.success(request, f'管理员【{admin_user.first_name or admin_user.username}】状态已更新为{"正常" if admin_user.is_active else "禁用"}')
+    # 保留查询参数，避免跳转错误
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    redirect_url = reverse('user_manage')
+    query_params = request.GET.copy()
+    query_params['user_type'] = 'admin'  # 保持管理员筛选
+    if query_params:
+        redirect_url += '?' + query_params.urlencode()
+    return HttpResponseRedirect(redirect_url)
 
 # -------------------------- 5. 导出用户台账 --------------------------
 @login_required
@@ -563,7 +839,7 @@ def user_export_ledger(request):
                 user.name,
                 user.gender,
                 user.major or '-',
-                user.advisor or '-',
+                ', '.join([a.name for a in user.advisors.all()]) if user.user_type == 'student' else '-',
                 user.department,
                 user.phone,
                 user.booking_count,

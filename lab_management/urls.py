@@ -18,7 +18,4 @@ urlpatterns = [
     
     # 负责人
     path('manager/', include('manager.urls')),
-    
-    # 通用跳转：退出登录
-    path('logout/', views.user_logout, name='logout'),
 ]

@@ -3,10 +3,11 @@ from decimal import Decimal
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-# 设备可用状态枚举（匹配你的下拉选项）
+# 设备状态枚举（设备物理状态，不包含时段占用情况）
 DEVICE_STATUS = (
-    ('available', '可用'),
-    ('unavailable', '不可用'),
+    ('available', '正常'),
+    ('maintenance', '维修中'),
+    ('discarded', '已报废'),
 )
 
 class Device(models.Model):
@@ -17,7 +18,7 @@ class Device(models.Model):
     manufacturer = models.CharField(max_length=100, verbose_name='生产厂商', default='未知厂商')  # 已加默认值
     purchase_date = models.DateField(verbose_name='购入时间', null=True, blank=True)  # 可选：加空值支持
     purpose = models.CharField(max_length=200, verbose_name='实验用途', null=True, blank=True, default='未知用途')  # 可选：加空值支持
-    status = models.CharField(max_length=20, choices=DEVICE_STATUS, default='可用', verbose_name='可用状态')
+    status = models.CharField(max_length=20, choices=DEVICE_STATUS, default='available', verbose_name='设备状态', help_text='设备物理状态：正常/维修中/已报废。时段可用性由预约情况决定。')
     # 关键修改：给价格字段加默认值（Decimal类型默认值用数字）
     price_internal = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='校内租用价格（元/2小时）', default=Decimal('0'))
     price_external = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='校外租用价格（元/2小时）', default=Decimal('0'))
@@ -74,22 +75,16 @@ class Device(models.Model):
                 operator=current_user
             )
         elif old_status and old_status != self.status:
-            # 状态变更
-            if self.status == 'available' and old_status == 'unavailable':
-                # 设备归还（状态从不可用变为可用）
-                # 这个逻辑在devices/views.py中已经处理，这里不再重复
-                pass
-            else:
-                # 其他状态变更
-                DeviceLedger.objects.create(
-                    device=self,
-                    device_name=self.model,
-                    operation_type='other',
-                    operation_date=timezone.now(),
-                    status_after_operation=self.status,
-                    description=f'设备状态变更：{old_status} → {self.status}',
-                    operator=current_user
-                )
+            # 状态变更（记录所有状态变更，除了unavailable，因为已移除）
+            DeviceLedger.objects.create(
+                device=self,
+                device_name=self.model,
+                operation_type='other',
+                operation_date=timezone.now(),
+                status_after_operation=self.status,
+                description=f'设备状态变更：{old_status} → {self.status}',
+                operator=current_user
+            )
 
     def delete(self, *args, **kwargs):
         """重写delete方法，记录设备删除操作"""

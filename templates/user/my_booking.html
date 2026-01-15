@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -28,9 +32,11 @@
     <!-- 状态筛选按钮 -->
     <div style="margin: 20px 0;">
         <a href="?status=all" class="btn {% if status_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部</a>
-        <a href="?status=pending" class="btn {% if status_filter == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}">待审批</a>
+        <a href="?status=teacher_pending" class="btn {% if status_filter == 'teacher_pending' %}btn-primary{% else %}btn-secondary{% endif %}">待教师审批</a>
+        <a href="?status=pending" class="btn {% if status_filter == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}">待管理员审批</a>
         <a href="?status=manager_approved" class="btn {% if status_filter == 'manager_approved' %}btn-primary{% else %}btn-secondary{% endif %}">已批准</a>
-        <a href="?status=admin_rejected" class="btn {% if status_filter == 'admin_rejected' %}btn-primary{% else %}btn-secondary{% endif %}">已拒绝</a>
+        <a href="?status=payment_pending" class="btn {% if status_filter == 'payment_pending' %}btn-primary{% else %}btn-secondary{% endif %}">待缴费</a>
+        <a href="?status=teacher_rejected" class="btn {% if status_filter == 'teacher_rejected' %}btn-primary{% else %}btn-secondary{% endif %}">已拒绝</a>
         <a href="?status=cancelled" class="btn {% if status_filter == 'cancelled' %}btn-primary{% else %}btn-secondary{% endif %}">已撤销</a>
     </div>
 
@@ -56,13 +62,22 @@
                 <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_date }}</td>
                 <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.time_slot }}</td>
                 <td style="padding: 8px; border: 1px solid #dee2e6;">
-                    {# 修复1：去掉列表，只用or判断 #}
-                    {% if booking.status == 'pending' %}
-                        <span style="color: #ffc107;">待审批</span>
+                    {% if booking.status == 'teacher_pending' %}
+                        <span style="color: #ff9800; font-weight: bold;">待指导教师审批</span>
+                    {% elif booking.status == 'pending' %}
+                        <span style="color: #ffc107; font-weight: bold;">待管理员审批</span>
+                    {% elif booking.status == 'admin_approved' %}
+                        <span style="color: #17a2b8;">管理员已批准（待负责人审批）</span>
+                    {% elif booking.status == 'payment_pending' %}
+                        <span style="color: #ff9800;">待缴费</span>
                     {% elif booking.status == 'manager_approved' %}
-                        <span style="color: #28a745;">已批准</span>
-                    {% elif booking.status == 'admin_rejected' or booking.status == 'manager_rejected' %}
-                        <span style="color: #dc3545;">已拒绝</span>
+                        <span style="color: #28a745; font-weight: bold;">全部审批通过</span>
+                    {% elif booking.status == 'teacher_rejected' %}
+                        <span style="color: #dc3545;">指导教师已拒绝</span>
+                    {% elif booking.status == 'admin_rejected' %}
+                        <span style="color: #dc3545;">管理员已拒绝</span>
+                    {% elif booking.status == 'manager_rejected' %}
+                        <span style="color: #dc3545;">负责人已拒绝</span>
                     {% elif booking.status == 'cancelled' %}
                         <span style="color: #6c757d;">已撤销</span>
                     {% else %}
@@ -70,11 +85,15 @@
                     {% endif %}
                 </td>
                 <td style="padding: 8px; border: 1px solid #dee2e6;">
-                    {# 修复2：去掉列表，只用or判断 #}
-                    {% if booking.status == 'pending' or booking.status == 'admin_approved' %}
-                        <a href="{% url 'cancel_booking' booking.id %}" class="btn btn-danger btn-sm" onclick="return confirm('确定撤销该预约吗？')">撤销</a>
+                    {# 可以撤销的状态：待审批、已批准、待缴费等（除了已拒绝和已撤销） #}
+                    {% if booking.status == 'teacher_pending' or booking.status == 'pending' or booking.status == 'admin_approved' or booking.status == 'manager_approved' or booking.status == 'payment_pending' %}
+                        <a href="{% url 'cancel_booking' booking.id %}" class="btn btn-danger btn-sm" onclick="return confirm('确定撤销该预约吗？{% if booking.payment_amount > 0 %}撤销后将退还95%的费用。{% endif %}')">撤销预约</a>
+                    {% elif booking.status == 'cancelled' %}
+                        <span style="color: #6c757d;">已撤销</span>
+                    {% elif booking.status == 'teacher_rejected' or booking.status == 'admin_rejected' or booking.status == 'manager_rejected' %}
+                        <span style="color: #dc3545;">已拒绝</span>
                     {% else %}
-                        <button class="btn btn-secondary btn-sm" disabled>查看详情</button>
+                        <span style="color: #999;">-</span>
                     {% endif %}
                 </td>
             </tr>

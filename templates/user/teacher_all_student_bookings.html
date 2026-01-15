@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+
+{% block title %}查看我的学生预约申请 - 江南大学实验室设备管理系统{% endblock %}
+
+{% block sidebar %}
+<div class="sidebar">
+    <a href="{% url 'user_home' %}">首页</a>
+    <a href="{% url 'device_list' %}">设备查询</a>
+    <a href="{% url 'booking_apply' %}">预约申请</a>
+    <a href="{% url 'my_booking' %}">我的预约</a>
+    <a href="{% url 'user_profile' %}">个人信息</a>
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}" class="active">查看我的学生申请</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>查看我的学生预约申请</h2>
+    <p style="color: #666; margin-bottom: 20px;">
+        此页面仅显示指定您为指导教师的学生的预约申请。只有当学生在预约时选择了您作为指导教师，您才能看到该预约申请。
+    </p>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
+                {% if message.tags == 'success' %}background-color: #d4edda; color: #155724;{% endif %}
+                {% if message.tags == 'error' %}background-color: #f8d7da; color: #721c24;{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- 筛选表单 -->
+    <form method="get" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+                <label style="display: block; margin-bottom: 5px;">学生姓名</label>
+                <input type="text" name="student_name" value="{{ student_name }}" 
+                       placeholder="输入学生姓名" style="width: 100%; padding: 8px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px;">学号</label>
+                <input type="text" name="student_code" value="{{ student_code }}" 
+                       placeholder="输入学号" style="width: 100%; padding: 8px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px;">专业</label>
+                <input type="text" name="student_major" value="{{ student_major }}" 
+                       placeholder="输入专业" style="width: 100%; padding: 8px;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px;">审批状态</label>
+                <select name="status" style="width: 100%; padding: 8px;">
+                    <option value="">全部状态</option>
+                    <option value="teacher_pending" {% if status_filter == 'teacher_pending' %}selected{% endif %}>待指导教师审批</option>
+                    <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>待管理员审批</option>
+                    <option value="admin_approved" {% if status_filter == 'admin_approved' %}selected{% endif %}>管理员已批准</option>
+                    <option value="manager_approved" {% if status_filter == 'manager_approved' %}selected{% endif %}>全部审批通过</option>
+                    <option value="teacher_rejected" {% if status_filter == 'teacher_rejected' %}selected{% endif %}>指导教师已拒绝</option>
+                    <option value="admin_rejected" {% if status_filter == 'admin_rejected' %}selected{% endif %}>管理员已拒绝</option>
+                    <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>已撤销</option>
+                </select>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 10px;">
+                <button type="submit" class="btn btn-primary">筛选</button>
+                <a href="{% url 'teacher_all_student_bookings' %}" class="btn">重置</a>
+            </div>
+        </div>
+    </form>
+
+    <!-- 预约申请列表 -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <thead>
+            <tr style="background-color: #f8f9fa;">
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">预约编号</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">学生信息</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">设备信息</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">预约日期</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">预约时段</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">指导教师</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">审批状态</th>
+                <th style="padding: 10px; border: 1px solid #dee2e6; text-align: left;">创建时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for booking in bookings %}
+            <tr style="{% if booking.applicant.id in my_student_ids %}background-color: #fff3cd;{% endif %}">
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ booking.booking_code }}</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                    {{ booking.applicant.name }}（{{ booking.applicant.user_code }}）
+                    {% if booking.applicant.major %}
+                        <span style="color: #ff9800; font-weight: bold; margin-left: 5px;">[{{ booking.applicant.major }}]</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                    {{ booking.device.device_code }} - {{ booking.device.model }}
+                </td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ booking.booking_date|date:"Y-m-d" }}</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ booking.time_slot }}</td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                    {% if booking.teacher %}
+                        {{ booking.teacher.name }}（{{ booking.teacher.user_code }}）
+                    {% else %}
+                        <span style="color: #999;">未指定</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">
+                    <span style="
+                        {% if booking.status == 'manager_approved' %}color: #28a745; font-weight: bold;
+                        {% elif booking.status == 'teacher_pending' or booking.status == 'pending' %}color: #ffc107; font-weight: bold;
+                        {% elif 'rejected' in booking.status or booking.status == 'cancelled' %}color: #dc3545;
+                        {% else %}color: #666;
+                        {% endif %}">
+                        {{ booking.get_status_display }}
+                    </span>
+                </td>
+                <td style="padding: 10px; border: 1px solid #dee2e6;">{{ booking.create_time|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="padding: 20px; text-align: center; color: #999;">暂无预约申请</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div style="margin-top: 20px; padding: 15px; background-color: #e7f3ff; border-radius: 5px;">
+        <strong>说明：</strong>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>此页面仅显示指定您为指导教师的学生的预约申请</li>
+            <li>只有当学生在预约时选择了您作为指导教师，您才能看到该预约申请</li>
+            <li>如需审批待审批的申请，请前往 <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a> 页面</li>
+            <li>如果列表为空，说明还没有学生选择您作为指导教师进行预约</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

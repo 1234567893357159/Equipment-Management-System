@@ -2,6 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>{% block title %}江南大学实验室设备管理系统{% endblock %}</title>
     <style>
         * {
@@ -70,6 +73,21 @@
             color: white;
             background-color: #3498db;
             margin: 5px 0;
+            text-decoration: none;
+            display: inline-block;
+            pointer-events: auto;
+            position: relative;
+            z-index: 1;
+        }
+        .btn:hover {
+            opacity: 0.9;
+            background-color: #2980b9;
+        }
+        .btn:active {
+            opacity: 0.8;
+        }
+        .btn-success:hover {
+            background-color: #27ae60;
         }
         .btn-success {
             background-color: #2ecc71;
@@ -111,7 +129,7 @@
         <div>
             {% if request.path != '/' %}
                 <span>欢迎使用系统</span>
-                <a href="{% url 'logout' %}" class="btn btn-danger">退出登录</a>
+                <a href="{% url 'user_logout' %}" class="btn btn-danger">退出登录</a>
             {% endif %}
         </div>
     </div>

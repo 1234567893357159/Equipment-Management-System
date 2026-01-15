@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -21,7 +25,17 @@
             <p><strong>设备编号：</strong>{{ device.device_code }}</p>
             <p><strong>设备型号：</strong>{{ device.model }}</p>
             <p><strong>生产厂商：</strong>{{ device.manufacturer }}</p>
-            <p><strong>当前状态：</strong>{{ device.status }}</p>
+            <p><strong>设备状态：</strong>
+                {% if device.status == 'available' %}
+                    <span style="color: green; font-weight: bold;">{{ device.get_status_display }}</span>
+                {% elif device.status == 'maintenance' %}
+                    <span style="color: orange; font-weight: bold;">{{ device.get_status_display }}</span>
+                {% elif device.status == 'discarded' %}
+                    <span style="color: #999; font-weight: bold;">{{ device.get_status_display }}</span>
+                {% else %}
+                    <span>{{ device.get_status_display }}</span>
+                {% endif %}
+            </p>
         </div>
         <!-- 返回按钮 -->
         <a href="{% url 'device_list' %}" class="btn btn-secondary" style="margin-top: 10px;">返回设备列表</a>
@@ -31,17 +45,22 @@
     <table style="width: 100%; border-collapse: collapse;">
         <thead>
             <tr style="background-color: #f8f9fa;">
+                {% if can_view_booking_details %}
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">预约人</th>
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">预约人类型</th>
+                {% endif %}
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">预约日期</th>
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">预约时段（2小时/单位）</th>
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">审批状态</th>
+                {% if can_view_booking_details %}
                 <th style="padding: 8px; border: 1px solid #dee2e6; text-align: left;">联系电话</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
             {% for booking in bookings %}
             <tr>
+                {% if can_view_booking_details %}
                 <!-- 1. 预约人：关联UserInfo的name字段 -->
                 <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.applicant.name|default:"未知" }}</td>
                 
@@ -57,6 +76,7 @@
                         {{ booking.applicant.user_type|default:"未知" }}
                     {% endif %}
                 </td>
+                {% endif %}
                 
                 <!-- 3. 预约日期：格式化显示 -->
                 <td style="padding: 8px; border: 1px solid #dee2e6;">
@@ -70,31 +90,39 @@
                 
                 <!-- 5. 审批状态：匹配模型中的APPROVAL_STATUS汉化显示 -->
                 <td style="padding: 8px; border: 1px solid #dee2e6;">
-                    {% if booking.status == 'pending' %}
-                        待管理员审批
+                    {% if booking.status == 'teacher_pending' %}
+                        <span style="color: #ff9800;">待指导教师审批</span>
+                    {% elif booking.status == 'pending' %}
+                        <span style="color: #ffc107;">待管理员审批</span>
                     {% elif booking.status == 'admin_approved' %}
-                        管理员已批准（待负责人审批）
+                        <span style="color: #17a2b8;">管理员已批准（待负责人审批）</span>
+                    {% elif booking.status == 'payment_pending' %}
+                        <span style="color: #ff9800;">待缴费</span>
                     {% elif booking.status == 'manager_approved' %}
-                        全部审批通过
+                        <span style="color: #28a745;">全部审批通过</span>
+                    {% elif booking.status == 'teacher_rejected' %}
+                        <span style="color: #dc3545;">指导教师已拒绝</span>
                     {% elif booking.status == 'admin_rejected' %}
-                        管理员已拒绝
+                        <span style="color: #dc3545;">管理员已拒绝</span>
                     {% elif booking.status == 'manager_rejected' %}
-                        负责人已拒绝
+                        <span style="color: #dc3545;">负责人已拒绝</span>
                     {% elif booking.status == 'cancelled' %}
-                        用户已撤销
+                        <span style="color: #6c757d;">用户已撤销</span>
                     {% else %}
-                        {{ booking.status }}
+                        {{ booking.get_status_display }}
                     {% endif %}
                 </td>
                 
+                {% if can_view_booking_details %}
                 <!-- 6. 联系电话：从UserInfo的phone字段获取 -->
                 <td style="padding: 8px; border: 1px solid #dee2e6;">
                     {{ booking.applicant.phone|default:"未填写" }}
                 </td>
+                {% endif %}
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6" style="padding: 15px; border: 1px solid #dee2e6; text-align: center;">
+                <td colspan="{% if can_view_booking_details %}6{% else %}3{% endif %}" style="padding: 15px; border: 1px solid #dee2e6; text-align: center;">
                     该设备暂无预约记录
                 </td>
             </tr>

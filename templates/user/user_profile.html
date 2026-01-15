@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -39,9 +43,11 @@
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px;">用户名/学号/编号</label>
-                    <input type="text" name="user_id" value="{{ user_info.user_code }}" readonly 
-                           style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; background-color: #e9ecef;">
+                    <label style="display: block; margin-bottom: 5px;">用户编号/学号/工号</label>
+                    <input type="text" value="{{ user_info.user_code }}" readonly 
+                           style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; background-color: #e9ecef; cursor: not-allowed;"
+                           title="用户编号不可修改">
+                    <small style="color: #666; font-size: 12px;">用户编号唯一且不可修改</small>
                 </div>
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px;">姓名</label>
@@ -74,9 +80,18 @@
                     </div>
                     <div class="form-group" style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 5px;">指导教师</label>
-                        <input type="text" name="advisor" value="{{ user_info.advisor|default:'' }}" required 
-                               style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;"
-                               placeholder="请输入指导教师姓名">
+                        <div style="padding: 8px; border: 1px solid #ced4da; border-radius: 4px; background-color: #f8f9fa; min-height: 40px;">
+                            {% if user_info.advisors.all %}
+                                {% for advisor in user_info.advisors.all %}
+                                    <span style="display: inline-block; padding: 4px 8px; margin: 2px; background-color: #e9ecef; border-radius: 3px;">
+                                        {{ advisor.name }}（{{ advisor.user_code }}）
+                                    </span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color: #999;">暂无指导教师，请联系教师将您添加到学生列表</span>
+                            {% endif %}
+                        </div>
+                        <small style="color: #666; font-size: 12px;">指导教师由教师管理，学生无法自行修改</small>
                     </div>
                 {% elif user_info.user_type == 'teacher' %}
                     <div class="form-group" style="margin-bottom: 15px;">
@@ -129,7 +144,13 @@
             <a href="{% url 'add_student' %}" class="btn btn-primary" style="padding: 8px 20px; margin-right: 10px;">
                 添加学生
             </a>
-            <button class="btn btn-secondary" style="padding: 8px 20px;">批量导入（Excel）</button>
+            <a href="{% url 'import_students_excel' %}" class="btn btn-secondary" style="padding: 8px 20px; margin-right: 10px;">批量导入（Excel）</a>
+            <a href="{% url 'teacher_booking_approve' %}" class="btn btn-success" style="padding: 8px 20px; margin-right: 10px;">
+                审批我的学生
+            </a>
+            <a href="{% url 'teacher_all_student_bookings' %}" class="btn" style="padding: 8px 20px;">
+                查看我的学生申请
+            </a>
         </div>
         
         <!-- 学生列表 -->

@@ -30,7 +30,7 @@ class BookingAdmin(admin.ModelAdmin):
             'fields': ('booking_code', 'applicant', 'device', 'booking_date', 'time_slot')
         }),
         ('申请信息', {
-            'fields': ('purpose', 'teacher_id')
+            'fields': ('purpose', 'teacher')
         }),
         ('审批状态', {
             'fields': ('status', 'create_time', 'update_time')

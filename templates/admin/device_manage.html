@@ -5,12 +5,14 @@
 {% block sidebar %}
 <div class="sidebar">
     {% if is_admin %}
+        {# 管理员侧边栏 #}
         <a href="{% url 'admin_home' %}">首页</a>
         <a href="{% url 'booking_approve' %}">预约审批</a>
         <a href="{% url 'device_manage' %}" class="active">设备管理</a>
         <a href="{% url 'ledger:ledger_home' %}">台账</a>
         <a href="{% url 'report_stat' %}">报表统计</a>
     {% elif is_manager %}
+        {# 负责人侧边栏 #}
         <a href="{% url 'manager_home' %}">首页</a>
         <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
         <a href="{% url 'device_manage' %}" class="active">设备管理</a>
@@ -18,11 +20,9 @@
         <a href="{% url 'ledger:ledger_home' %}">台账</a>
         <a href="{% url 'manager_report_stat' %}">报表统计</a>
     {% else %}
+        {# 默认侧边栏（不应该出现，但作为后备） #}
         <a href="{% url 'admin_home' %}">首页</a>
-        <a href="{% url 'booking_approve' %}">预约审批</a>
         <a href="{% url 'device_manage' %}" class="active">设备管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'report_stat' %}">报表统计</a>
     {% endif %}
 </div>
 {% endblock %}
@@ -49,7 +49,7 @@
                 <th>生产厂商</th>
                 <th>购入时间</th>
                 <th>实验用途</th>
-                <th>可用状态</th>
+                <th>设备状态</th>
                 <th>租用价格</th>
                 <th>操作</th>
             </tr>
@@ -62,21 +62,34 @@
                 <td>{{ device.manufacturer }}</td>
                 <td>{{ device.purchase_date|date:"Y-m-d" }}</td>
                 <td>{{ device.purpose }}</td>
-                <td>{{ device.status }}</td>
+                <td>
+                    {% if device.status == 'unavailable' %}
+                        <span style="color: #999;">正常（旧数据，请更新）</span>
+                    {% else %}
+                        {{ device.get_status_display }}
+                    {% endif %}
+                </td>
                 <td>
                     {{ device.price_internal }}元/2小时（校内）<br>
                     {{ device.price_external }}元/2小时（校外）
                 </td>
                 <td>
-                    <!-- 1. 编辑按钮（保留） -->
-                    <a href="{% url 'device_detail' pk=device.pk %}" class="btn btn-primary">编辑</a>
+                    <!-- 1. 编辑按钮：跳转到内联编辑表单 -->
+                    <a href="{% url 'device_manage' %}?edit_id={{ device.pk }}{% if keyword %}&keyword={{ keyword|urlencode }}{% endif %}#add_device" class="btn btn-primary">编辑</a>
                     
-                    <!-- 2. 状态切换按钮：根据当前状态显示“标记不可用”或“标记可用” -->
-                    {% if device.status == '可用' %}
-                    <a href="{% url 'device_manage' %}?status_action=unavailable&pk={{ device.pk }}" class="btn btn-warning">标记不可用</a>
-                    {% else %}
-                    <a href="{% url 'device_manage' %}?status_action=available&pk={{ device.pk }}" class="btn btn-success">标记可用</a>
-                    {% endif %}
+                    <!-- 2. 状态切换下拉菜单：提供所有状态选项 -->
+                    <form method="get" style="display: inline-block; margin: 0;">
+                        {% if keyword %}
+                        <input type="hidden" name="keyword" value="{{ keyword }}">
+                        {% endif %}
+                        <input type="hidden" name="pk" value="{{ device.pk }}">
+                        <select name="status_action" onchange="this.form.submit()" style="padding: 6px 12px; border: 1px solid #ced4da; border-radius: 4px; background-color: white;">
+                            <option value="" disabled>更改状态</option>
+                            <option value="available" {% if device.status == 'available' or device.status == 'unavailable' %}selected{% endif %}>正常</option>
+                            <option value="maintenance" {% if device.status == 'maintenance' %}selected{% endif %}>维修中</option>
+                            <option value="discarded" {% if device.status == 'discarded' %}selected{% endif %}>已报废</option>
+                        </select>
+                    </form>
                     
                     <!-- 3. 删除按钮（新增，需确认弹窗防止误删） -->
                     <a href="{% url 'device_delete' pk=device.pk %}" class="btn btn-danger" onclick="return confirm('确定要删除设备【{{ device.device_code }}】吗？删除后数据不可恢复！')">删除</a>
@@ -95,7 +108,7 @@
         <h3>{% if edit_device_id_js %}编辑实验设备{% else %}新增实验设备{% endif %}</h3>
         <form method="post" id="deviceForm">
             {% csrf_token %}
-            <input type="hidden" name="device_id" id="device_id">
+            <input type="hidden" name="device_id" id="device_id" value="{% if edit_device_id_js %}{{ edit_device_id_js }}{% endif %}">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="form-group">
                     <label>{{ form.device_code.label }}</label>
@@ -131,9 +144,18 @@
                 </div>
             </div>
             <button type="submit" class="btn btn-success">保存设备信息</button>
-            <button type="button" class="btn" onclick="location.href='#top'">取消</button>
+            <button type="button" class="btn" onclick="location.href='#top'; document.getElementById('device_id').value='';">取消</button>
         </form>
     </div>
 </div>
+
+<script>
+    // 如果页面加载时处于编辑状态，自动滚动到表单
+    {% if edit_device_id_js %}
+    window.onload = function() {
+        document.getElementById('add_device').scrollIntoView({ behavior: 'smooth' });
+    };
+    {% endif %}
+</script>
 
 {% endblock %}

@@ -7,24 +7,24 @@
 {% block sidebar %}
 <div class="sidebar">
     {% if is_admin %}
+        {# 管理员侧边栏 #}
         <a href="{% url 'admin_home' %}">首页</a>
         <a href="{% url 'booking_approve' %}">预约审批</a>
-        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
         <a href="{% url 'ledger:ledger_home' %}">台账</a>
         <a href="{% url 'report_stat' %}">报表统计</a>
     {% elif is_manager %}
+        {# 负责人侧边栏 #}
         <a href="{% url 'manager_home' %}">首页</a>
         <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
-        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
         <a href="{% url 'user_manage' %}">用户管理</a>
         <a href="{% url 'ledger:ledger_home' %}">台账</a>
         <a href="{% url 'manager_report_stat' %}">报表统计</a>
     {% else %}
+        {# 默认侧边栏（不应该出现，但作为后备） #}
         <a href="{% url 'admin_home' %}">首页</a>
-        <a href="{% url 'booking_approve' %}">预约审批</a>
-        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'report_stat' %}">报表统计</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
     {% endif %}
 </div>
 {% endblock %}
@@ -37,13 +37,15 @@
 
     <!-- 设备详情概览（可选，增强体验） -->
     <div style="margin: 20px 0; padding: 10px; background-color: #f5f5f5; border-radius: 5px;">
-        <p><strong>当前状态：</strong> 
-            {% if device.status == '可用' %}
-                <span style="color: green;">{{ device.status }}</span>
-            {% elif device.status == '检修中' %}
-                <span style="color: orange;">{{ device.status }}</span>
-            {% elif device.status == '报废' %}
-                <span style="color: red;">{{ device.status }}</span>
+        <p><strong>设备状态：</strong> 
+            {% if device.status == 'available' %}
+                <span style="color: green; font-weight: bold;">{{ device.get_status_display }}</span>
+            {% elif device.status == 'maintenance' %}
+                <span style="color: orange; font-weight: bold;">{{ device.get_status_display }}</span>
+            {% elif device.status == 'discarded' %}
+                <span style="color: #999; font-weight: bold;">{{ device.get_status_display }}</span>
+            {% else %}
+                <span>{{ device.get_status_display }}</span>
             {% endif %}
         </p>
         <p><strong>存放位置：</strong> 实验室设备管理系统（当前仅展示，后续可扩展）</p>

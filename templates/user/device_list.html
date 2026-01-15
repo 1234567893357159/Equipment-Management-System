@@ -9,6 +9,10 @@
     <a href="{% url 'booking_apply' %}">预约申请</a>
     <a href="{% url 'my_booking' %}">我的预约</a>
     <a href="{% url 'user_profile' %}">个人信息</a>
+    {% if is_teacher %}
+    <a href="{% url 'teacher_booking_approve' %}">审批我的学生</a>
+    <a href="{% url 'teacher_all_student_bookings' %}">查看我的学生申请</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -40,7 +44,7 @@
                 <th>型号</th>
                 <th>生产厂商</th>
                 <th>实验用途</th>
-                <th>可用状态</th>
+                <th>设备状态</th>
                 <th>租用价格</th>
                 <th>操作</th>
             </tr>
@@ -53,19 +57,15 @@
                 <td>{{ device.model }}</td>
                 <td>{{ device.manufacturer }}</td>
                 <td>{{ device.purpose }}</td>
-                <td>{{ device.status }}</td>
+                <td>{{ device.get_status_display }}</td>
                 <td>
                     <!-- 区分校内/校外价格显示 -->
                     {{ device.price_internal }}元/2小时（校内）<br>
                     {{ device.price_external }}元/2小时（校外）
                 </td>
                 <td>
-                    <!-- 仅“可用”状态显示可点击的预约按钮，其他状态禁用 -->
-                    {% if device.status == '可用' %}
+                    <!-- 所有设备都可以预约，设备只是在特定时段不可用，不是整个设备不可用 -->
                     <a href="{% url 'booking_apply' %}?device_id={{ device.id }}" class="btn btn-success">预约</a>
-                    {% else %}
-                    <button class="btn" disabled>预约</button>
-                    {% endif %}
                     <!-- 新增查看按钮 -->
                     <a href="{% url 'device_booking_detail' device.id %}" class="btn btn-info" style="margin-left: 5px;">查看</a>
                 </td>
@@ -75,7 +75,7 @@
             <tr>
                 <td colspan="7" class="text-center">
                     {% if keyword %}
-                    未找到“{{ keyword }}”相关的设备，请更换关键词重试！
+                    未找到"{{ keyword }}"相关的设备，请更换关键词重试！
                     {% else %}
                     暂无设备数据
                     {% endif %}

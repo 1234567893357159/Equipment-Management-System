@@ -15,3 +15,10 @@ def extract_device_code(description):
             if subparts:
                 return subparts[0]
     return ''
+
+@register.filter
+def get_item(dictionary, key):
+    """从字典中获取值"""
+    if dictionary is None:
+        return None
+    return dictionary.get(key)

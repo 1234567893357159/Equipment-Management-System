@@ -4,26 +4,11 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    {% if is_admin %}
-        <a href="{% url 'admin_home' %}">首页</a>
-        <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'report_stat' %}">报表统计</a>
-    {% elif is_manager %}
-        <a href="{% url 'manager_home' %}">首页</a>
-        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'user_manage' %}">用户管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'manager_report_stat' %}">报表统计</a>
-    {% else %}
-        <a href="{% url 'admin_home' %}">首页</a>
-        <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
-        <a href="{% url 'device_manage' %}">设备管理</a>
-        <a href="{% url 'ledger:ledger_home' %}">台账</a>
-        <a href="{% url 'report_stat' %}">报表统计</a>
-    {% endif %}
+    <a href="{% url 'admin_home' %}">首页</a>
+    <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
+    <a href="{% url 'device_manage' %}">设备管理</a>
+    <a href="{% url 'ledger:ledger_home' %}">台账</a>
+    <a href="{% url 'report_stat' %}">报表统计</a>
 </div>
 {% endblock %}
 
@@ -79,7 +64,17 @@
                     </td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.device_code }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_date }} {{ booking.time_slot }}</td>
-                    <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.get_status_display }}</td>
+                    <td style="padding: 8px; border: 1px solid #dee2e6;">
+                        {% if booking.device.status == 'available' %}
+                            <span style="color: green; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% elif booking.device.status == 'maintenance' %}
+                            <span style="color: orange; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% elif booking.device.status == 'discarded' %}
+                            <span style="color: #999; font-weight: bold;">{{ booking.device.get_status_display }}</span>
+                        {% else %}
+                            <span>{{ booking.device.get_status_display }}</span>
+                        {% endif %}
+                    </td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.get_status_display }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">
                         {% if is_admin %}

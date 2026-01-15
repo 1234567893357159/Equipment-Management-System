@@ -30,7 +30,7 @@ class UserInfoAdmin(admin.ModelAdmin):
             'fields': ('user_code', 'name', 'user_type', 'department', 'phone', 'gender', 'is_active')
         }),
         ('学生专属信息（仅学生填写）', {
-            'fields': ('major', 'advisor'),
+            'fields': ('major', 'advisors'),
             'classes': ('collapse',)  # 可折叠，默认收起
         }),
         ('教师专属信息（仅教师填写）', {

@@ -109,7 +109,7 @@
                     <td>{{ booking.booking_date|date:"Y-m-d" }}</td>
                     <td>{{ booking.time_slot }}</td>
                     <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ booking.purpose|default:'' }}">{{ booking.purpose|default:"-"|truncatewords:10 }}</td>
-                    <td>{{ booking.teacher_id|default:"-" }}</td>
+                    <td>{% if booking.teacher %}{{ booking.teacher.user_code }}{% else %}-{% endif %}</td>
                     <td>{{ booking.get_status_display }}</td>
                     <td>{{ booking.create_time|date:"Y-m-d H:i" }}</td>
                 </tr>

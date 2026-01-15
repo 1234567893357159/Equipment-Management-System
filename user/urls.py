@@ -1,6 +1,9 @@
 from django.urls import path, include
 from . import views
-from booking.views import booking_apply, cancel_booking, my_booking, device_booking_detail, check_availability
+from booking.views import booking_apply, cancel_booking, my_booking, device_booking_detail, check_availability, get_available_time_slots, get_available_time_slots
+from user.views_teacher_approval import teacher_booking_approve
+from user.views_excel_import import import_students_excel
+from user.views_all_student_bookings import teacher_all_student_bookings
 
 urlpatterns = [
     # 普通用户首页
@@ -13,6 +16,8 @@ urlpatterns = [
     path('booking/apply/', booking_apply, name='booking_apply'),
     # 查询空闲状态
     path('check-availability/', check_availability, name='check_availability'),
+    # 获取可用时段列表
+    path('get-available-time-slots/', get_available_time_slots, name='get_available_time_slots'),
     # 我的预约页
     path('booking/my/', my_booking, name='my_booking'),
     # 删除预约
@@ -23,10 +28,14 @@ urlpatterns = [
     # 注册页
     path('register/', views.register_view, name='register'),
     # 教师指导学生管理
-    path('student/add/', views.add_student, name='add_student'),
-    path('student/edit/<int:student_id>/', views.edit_student, name='edit_student'),
-    path('student/remove/<int:student_id>/', views.remove_student, name='remove_student'),
-    # 教师新增学生
     path('student/add/', views.add_student, name='add_student'),  # 第一步
     path('student/add/full/', views.add_student_full, name='add_student_full'),  # 第二步
+    path('student/edit/<int:student_id>/', views.edit_student, name='edit_student'),
+    path('student/remove/<int:student_id>/', views.remove_student, name='remove_student'),
+    # 教师审批学生预约（仅自己指导的学生）
+    path('booking/approve/', teacher_booking_approve, name='teacher_booking_approve'),
+    # 教师查看所有学生预约申请
+    path('booking/all-students/', teacher_all_student_bookings, name='teacher_all_student_bookings'),
+    # Excel批量导入学生
+    path('student/import/', import_students_excel, name='import_students_excel'),
 ]
