@@ -71,8 +71,11 @@
             <input type="file" name="excel_file" accept=".xlsx,.xls" required 
                    style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
         </div>
-        <button type="submit" class="btn btn-success" style="margin-top: 20px; padding: 8px 20px;">开始导入</button>
-        <a href="{% url 'user_profile' %}" class="btn btn-secondary" style="margin-top: 20px; margin-left: 10px; padding: 8px 20px;">返回</a>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="submit" class="btn btn-success" style="padding: 8px 20px;">开始导入</button>
+            <a href="{% url 'download_template' %}" class="btn btn-primary" style="padding: 8px 20px;">下载模板</a>
+            <a href="{% url 'user_profile' %}" class="btn btn-secondary" style="padding: 8px 20px;">返回</a>
+        </div>
     </form>
 </div>
 {% endblock %}

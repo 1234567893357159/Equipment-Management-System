@@ -1,8 +1,8 @@
 from django.urls import path, include
 from . import views
-from booking.views import booking_apply, cancel_booking, my_booking, device_booking_detail, check_availability, get_available_time_slots, get_available_time_slots
+from booking.views import booking_apply, cancel_booking, my_booking, device_booking_detail, check_availability, get_available_time_slots
 from user.views_teacher_approval import teacher_booking_approve
-from user.views_excel_import import import_students_excel
+from user.views_excel_import import import_students_excel, download_template  # 合并导入
 from user.views_all_student_bookings import teacher_all_student_bookings
 
 urlpatterns = [
@@ -38,4 +38,6 @@ urlpatterns = [
     path('booking/all-students/', teacher_all_student_bookings, name='teacher_all_student_bookings'),
     # Excel批量导入学生
     path('student/import/', import_students_excel, name='import_students_excel'),
+    # 下载模板
+    path('student/download-template/', download_template, name='download_template'), 
 ]

@@ -150,3 +150,53 @@ def import_students_excel(request):
     return render(request, 'user/import_students_excel.html', {
         'teacher_info': teacher_info
     })
+
+# 下载模板函数
+
+@login_required
+def download_template(request):
+    """下载Excel导入模板"""
+    # 验证用户是否为教师
+    try:
+        teacher_info = UserInfo.objects.get(auth_user=request.user)
+        if teacher_info.user_type != 'teacher':
+            messages.error(request, '只有教师可以下载模板！')
+            return redirect('user_home')
+    except UserInfo.DoesNotExist:
+        messages.error(request, '未找到你的个人信息，请联系管理员！')
+        return redirect('user_home')
+    
+    try:
+        # 创建一个工作簿
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "学生导入模板"
+        
+        # 设置表头
+        headers = ['学号', '姓名', '性别', '专业', '所在学院', '联系电话']
+        ws.append(headers)
+        
+        # 添加一行示例数据
+        example_row = ['20230001', '张三', '男', '软件工程', '计算机科学与工程学院', '13800138000']
+        ws.append(example_row)
+        
+        # 设置列宽（可选）
+        from openpyxl.utils import get_column_letter
+        for col in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(col)].width = 15
+        
+        # 创建HTTP响应
+        from django.http import HttpResponse
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="学生导入模板.xlsx"'
+        
+        # 保存工作簿到响应
+        wb.save(response)
+        return response
+        
+    except Exception as e:
+        messages.error(request, f'生成模板失败：{str(e)}')
+        return redirect('import_students_excel')
