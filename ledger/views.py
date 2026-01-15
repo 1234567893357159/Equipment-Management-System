@@ -11,6 +11,9 @@ from .models import DeviceLedger
 from devices.models import Device, DEVICE_STATUS
 from user.models import UserInfo
 from booking.models import Booking
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 def check_ledger_permission(view_func):
     """权限检查装饰器：只允许设备管理员和实验室负责人访问台账"""
@@ -121,6 +124,7 @@ def device_operation_history_list(request):
         'operation_types': DeviceLedger.OPERATION_TYPES,
         'total_count': ledgers.count(),
     }
+    context.update(get_user_role_context(request))
     return render(request, 'ledger/device_ledger_list.html', context)
 
 @login_required
@@ -299,12 +303,17 @@ def booking_ledger_list(request):
 def device_ledger_detail(request, pk):
     """设备台账详情视图"""
     ledger = get_object_or_404(DeviceLedger, pk=pk)
-    return render(request, 'ledger/device_ledger_detail.html', {'ledger': ledger})
+    context = {
+        'ledger': ledger,
+    }
+    context.update(get_user_role_context(request))
+    return render(request, 'ledger/device_ledger_detail.html', context)
 
 @login_required
 @check_ledger_permission
 def export_device_ledger_csv(request):
-    """导出设备台账为CSV文件"""
+    """导出设备台账为Excel文件（.xlsx）"""
+    
     devices = Device.objects.all().order_by('device_code')
 
     # 应用相同的筛选条件
@@ -324,39 +333,88 @@ def export_device_ledger_csv(request):
     if status:
         devices = devices.filter(status=status)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="device_info_ledger.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "设备台账"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
-
-    writer = csv.writer(response)
-    writer.writerow([
+    # 设置表头
+    headers = [
         '设备编号', '型号', '购入时间', '生产厂商', '实验用途', 
         '时段可用状态', '校内租用价格（元/2小时）', '校外租用价格（元/2小时）', '创建时间', '更新时间'
-    ])
+    ]
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
+    # 日期列的索引（从1开始，表头是第1行，数据从第2行开始）
+    purchase_date_col = 3  # 购入时间
+    created_at_col = 9     # 创建时间
+    updated_at_col = 10    # 更新时间
+
+    # 写入数据
     for device in devices:
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        purchase_date = device.purchase_date.date() if device.purchase_date else None
+        created_at = device.created_at.replace(tzinfo=None) if device.created_at else None
+        updated_at = device.updated_at.replace(tzinfo=None) if device.updated_at else None
+        
+        row = [
             device.device_code,
             device.model,
-            device.purchase_date.strftime('%Y-%m-%d') if device.purchase_date else '-',
+            purchase_date,
             device.manufacturer,
             device.purpose or '-',
             device.get_status_display(),
-            str(device.price_internal),
-            str(device.price_external),
-            device.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
-        ])
+            device.price_internal,
+            device.price_external,
+            created_at,
+            updated_at,
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if purchase_date:
+            cell = ws.cell(row=current_row, column=purchase_date_col)
+            cell.number_format = 'yyyy-mm-dd'
+        if created_at:
+            cell = ws.cell(row=current_row, column=created_at_col)
+            cell.number_format = 'yyyy-mm-dd hh:mm:ss'
+        if updated_at:
+            cell = ws.cell(row=current_row, column=updated_at_col)
+            cell.number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="device_info_ledger.xlsx"'
+    
+    wb.save(response)
     return response
 
 @login_required
 @check_ledger_permission
 def export_teacher_ledger_csv(request):
-    """导出教师台账为CSV文件"""
+    """导出教师台账为Excel文件（.xlsx）"""
     teachers = UserInfo.objects.filter(
         user_type='teacher',
         booking__isnull=False
@@ -381,23 +439,32 @@ def export_teacher_ledger_csv(request):
     if title:
         teachers = teachers.filter(title__icontains=title)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="teacher_ledger.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "教师台账"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
+    # 设置表头
+    headers = ['教师编号', '姓名', '性别', '职称', '专业方向', '所在学院', '联系电话', '借用设备', '创建时间']
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    writer = csv.writer(response)
-    writer.writerow([
-        '教师编号', '姓名', '性别', '职称', '专业方向', '所在学院', '联系电话', '借用设备', '创建时间'
-    ])
+    # 日期列的索引
+    create_time_col = 9
 
+    # 写入数据
     for teacher in teachers:
-        # 获取所有借用的设备编号，多次借用就记录多次
         device_codes = [booking.device.device_code for booking in teacher.booking_set.all()]
         device_str = '、'.join(device_codes) if device_codes else '-'
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        create_time = teacher.create_time.replace(tzinfo=None) if teacher.create_time else None
+        
+        row = [
             teacher.user_code,
             teacher.name,
             teacher.gender,
@@ -406,15 +473,41 @@ def export_teacher_ledger_csv(request):
             teacher.department,
             teacher.phone,
             device_str,
-            teacher.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-        ])
+            create_time,
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if create_time:
+            ws.cell(row=current_row, column=create_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="teacher_ledger.xlsx"'
+    
+    wb.save(response)
     return response
 
 @login_required
 @check_ledger_permission
 def export_student_ledger_csv(request):
-    """导出学生台账为CSV文件"""
+    """导出学生台账为Excel文件（.xlsx）"""
     students = UserInfo.objects.filter(
         user_type='student',
         booking__isnull=False
@@ -443,23 +536,32 @@ def export_student_ledger_csv(request):
     if advisor:
         students = students.filter(advisor__icontains=advisor)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="student_ledger.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "学生台账"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
+    # 设置表头
+    headers = ['学号', '姓名', '性别', '专业', '导师', '所在学院', '联系电话', '借用设备', '创建时间']
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    writer = csv.writer(response)
-    writer.writerow([
-        '学号', '姓名', '性别', '专业', '导师', '所在学院', '联系电话', '借用设备', '创建时间'
-    ])
+    # 日期列的索引
+    create_time_col = 9
 
+    # 写入数据
     for student in students:
-        # 获取所有借用的设备编号，多次借用就记录多次
         device_codes = [booking.device.device_code for booking in student.booking_set.all()]
         device_str = '、'.join(device_codes) if device_codes else '-'
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        create_time = student.create_time.replace(tzinfo=None) if student.create_time else None
+        
+        row = [
             student.user_code,
             student.name,
             student.gender,
@@ -468,15 +570,41 @@ def export_student_ledger_csv(request):
             student.department,
             student.phone,
             device_str,
-            student.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-        ])
+            create_time,
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if create_time:
+            ws.cell(row=current_row, column=create_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="student_ledger.xlsx"'
+    
+    wb.save(response)
     return response
 
 @login_required
 @check_ledger_permission
 def export_external_ledger_csv(request):
-    """导出校外人员台账为CSV文件"""
+    """导出校外人员台账为Excel文件（.xlsx）"""
     externals = UserInfo.objects.filter(
         user_type='external',
         booking__isnull=False
@@ -497,38 +625,73 @@ def export_external_ledger_csv(request):
     if department:
         externals = externals.filter(department__icontains=department)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="external_ledger.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "校外人员台账"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
+    # 设置表头
+    headers = ['编号', '姓名', '性别', '所在单位名称', '联系电话', '借用设备', '创建时间']
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    writer = csv.writer(response)
-    writer.writerow([
-        '编号', '姓名', '性别', '所在单位名称', '联系电话', '借用设备', '创建时间'
-    ])
+    # 日期列的索引
+    create_time_col = 7
 
+    # 写入数据
     for external in externals:
-        # 获取所有借用的设备编号，多次借用就记录多次
         device_codes = [booking.device.device_code for booking in external.booking_set.all()]
         device_str = '、'.join(device_codes) if device_codes else '-'
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        create_time = external.create_time.replace(tzinfo=None) if external.create_time else None
+        
+        row = [
             external.user_code,
             external.name,
             external.gender,
             external.department,
             external.phone,
             device_str,
-            external.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-        ])
+            create_time,
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if create_time:
+            ws.cell(row=current_row, column=create_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="external_ledger.xlsx"'
+    
+    wb.save(response)
     return response
 
 @login_required
 @check_ledger_permission
 def export_booking_ledger_csv(request):
-    """导出预约台账为CSV文件"""
+    """导出预约台账为Excel文件（.xlsx）"""
     bookings = Booking.objects.select_related('applicant', 'device').order_by('-create_time')
 
     # 应用相同的筛选条件
@@ -560,41 +723,87 @@ def export_booking_ledger_csv(request):
     if date_to:
         bookings = bookings.filter(booking_date__lte=date_to)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="booking_ledger.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "预约台账"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
-
-    writer = csv.writer(response)
-    writer.writerow([
+    # 设置表头
+    headers = [
         '预约编号', '申请人编号', '申请人姓名', '申请人类型', '设备编号', '设备型号',
         '预约日期', '预约时段', '借用用途', '指导教师编号', '审批状态', '创建时间', '更新时间'
-    ])
+    ]
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
+    # 日期列的索引
+    booking_date_col = 7
+    create_time_col = 12
+    update_time_col = 13
+
+    # 写入数据
     for booking in bookings:
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        booking_date = booking.booking_date if booking.booking_date else None
+        create_time = booking.create_time.replace(tzinfo=None) if booking.create_time else None
+        update_time = booking.update_time.replace(tzinfo=None) if booking.update_time else None
+        
+        row = [
             booking.booking_code,
             booking.applicant.user_code,
             booking.applicant.name,
             booking.applicant.get_user_type_display(),
             booking.device.device_code,
             booking.device.model,
-            booking.booking_date.strftime('%Y-%m-%d'),
+            booking_date,
             booking.time_slot,
             booking.purpose or '-',
             booking.teacher_id or '-',
             booking.get_status_display(),
-            booking.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-            booking.update_time.strftime('%Y-%m-%d %H:%M:%S'),
-        ])
+            create_time,
+            update_time,
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if booking_date:
+            ws.cell(row=current_row, column=booking_date_col).number_format = 'yyyy-mm-dd'
+        if create_time:
+            ws.cell(row=current_row, column=create_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
+        if update_time:
+            ws.cell(row=current_row, column=update_time_col).number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="booking_ledger.xlsx"'
+    
+    wb.save(response)
     return response
 
 @login_required
 def export_ledger_csv(request):
-    """导出设备操作历史为CSV文件（保留原有功能）"""
+    """导出设备操作历史为Excel文件（.xlsx）"""
     ledgers = DeviceLedger.objects.select_related('device', 'user', 'operator').order_by('-operation_date')
 
     # 应用相同的筛选条件
@@ -618,19 +827,30 @@ def export_ledger_csv(request):
     if operator_name:
         ledgers = ledgers.filter(operator__username__icontains=operator_name)
 
-    # 创建CSV响应
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="device_operation_history.csv"'
+    # 创建Excel工作簿
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "设备操作历史"
 
-    # 添加BOM以支持中文
-    response.write('\ufeff'.encode('utf-8'))
-
-    writer = csv.writer(response)
-    writer.writerow([
+    # 设置表头
+    headers = [
         '设备编号', '设备名称', '借用人', '操作类型', '操作日期',
         '预期归还时间', '实际归还时间', '设备状态', '操作员', '备注'
-    ])
+    ]
+    ws.append(headers)
+    
+    # 设置表头样式
+    header_font = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
+    # 日期列的索引
+    operation_date_col = 5
+    expected_return_date_col = 6
+    actual_return_date_col = 7
+
+    # 写入数据
     for ledger in ledgers:
         # 处理设备编号：优先使用device.device_code，否则从description中提取
         if ledger.device:
@@ -645,17 +865,52 @@ def export_ledger_csv(request):
         else:
             device_code = ledger.device_name
         
-        writer.writerow([
+        # 转换datetime为naive datetime（移除时区信息）
+        operation_date = ledger.operation_date.replace(tzinfo=None) if ledger.operation_date else None
+        expected_return_date = ledger.expected_return_date.replace(tzinfo=None) if ledger.expected_return_date else None
+        actual_return_date = ledger.actual_return_date.replace(tzinfo=None) if ledger.actual_return_date else None
+        
+        row = [
             device_code,
             ledger.device_name,
             ledger.user.name if ledger.user else '',
             ledger.get_operation_type_display(),
-            ledger.operation_date.strftime('%Y-%m-%d %H:%M:%S'),
-            ledger.expected_return_date.strftime('%Y-%m-%d %H:%M:%S') if ledger.expected_return_date else '-',
-            ledger.actual_return_date.strftime('%Y-%m-%d %H:%M:%S') if ledger.actual_return_date else '-',
+            operation_date,
+            expected_return_date,
+            actual_return_date,
             ledger.get_status_after_operation_display(),
             ledger.operator.username if ledger.operator else '系统',
             ledger.description or ''
-        ])
+        ]
+        ws.append(row)
+        
+        # 设置日期格式（短日期格式）
+        current_row = ws.max_row
+        if operation_date:
+            ws.cell(row=current_row, column=operation_date_col).number_format = 'yyyy-mm-dd hh:mm:ss'
+        if expected_return_date:
+            ws.cell(row=current_row, column=expected_return_date_col).number_format = 'yyyy-mm-dd hh:mm:ss'
+        if actual_return_date:
+            ws.cell(row=current_row, column=actual_return_date_col).number_format = 'yyyy-mm-dd hh:mm:ss'
 
+    # 自动调整列宽
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # 创建响应
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="device_operation_history.xlsx"'
+    
+    wb.save(response)
     return response

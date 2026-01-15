@@ -11,6 +11,9 @@ urlpatterns = [
     path('user/edit/<int:pk>/', views.user_edit, name='user_edit'),      # 编辑用户
     path('user/delete/<int:pk>/', views.user_delete, name='user_delete'),# 删除用户
     path('user/toggle/<int:pk>/', views.user_toggle_status, name='user_toggle_status'),  # 切换状态
+    path('user/export/', views.user_export_ledger, name='user_export_ledger'),  # 导出用户台账
     # 报表
     path('report/', views.manager_report_stat, name='manager_report_stat'),
+    # 报表导出
+    path('report/export/<int:report_id>/', views.manager_export_report_csv, name='manager_export_report_csv'),
 ]

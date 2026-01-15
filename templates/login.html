@@ -2,19 +2,18 @@
 
 {% block title %}登录 - 江南大学实验室设备管理系统{% endblock %}
 
-{% block sidebar %}
-{% endblock %}
-
 {% block content %}
 <div class="card" style="width: 400px; margin: 50px auto;">
     <h2 style="text-align: center; margin-bottom: 20px;">系统登录</h2>
     
+    <!-- 错误提示 -->
     {% if error %}
     <div style="color: red; text-align: center; margin-bottom: 15px;">
         {{ error }}
     </div>
     {% endif %}
 
+    <!-- 新增：登录提示 -->
     <div style="color: #666; text-align: center; margin-bottom: 15px; font-size: 12px;">
         普通用户：用户名=用户编号/学号/工号，初始密码=编号<br>
         管理员：labadmin（密码labadmin），负责人：manager（密码manager）
@@ -24,28 +23,25 @@
         {% csrf_token %}
         <div class="form-group">
             <label>用户名</label>
-            <input type="text" name="username" placeholder="请输入用户编号/学号/工号" required style="width: 100%;">
+            <input type="text" name="username" placeholder="请输入用户编号/学号/工号" required>
         </div>
         <div class="form-group">
             <label>密码</label>
-            <input type="password" name="password" placeholder="请输入初始密码（用户编号）" required style="width: 100%;">
+            <input type="password" name="password" placeholder="请输入初始密码（用户编号）" required>
         </div>
         <div class="form-group">
             <label>用户角色</label>
-            <select name="role" required style="width: 100%;">
+            <select name="role" required>
                 <option value="">请选择角色</option>
                 <option value="user">普通用户（教师/学生/校外人员）</option>
                 <option value="admin">设备管理员</option>
                 <option value="manager">实验室负责人</option>
             </select>
         </div>
-        
-        <div style="margin-top: 20px;">
-            <button type="submit" class="btn btn-success" style="width: 100%;">登录系统</button>
+        <button type="submit" class="btn btn-success" style="width: 100%;">登录系统</button>
         </div>
-
         <div style="text-align: center; margin-top: 20px;">
-            <p style="font-size: 14px; color: #666;">还没有账号？<a href="{% url 'register' %}" style="color: #3498db; text-decoration: none;">立即注册</a></p>
+            <p>还没有账号？<a href="{% url 'register' %}">立即注册</a></p>
         </div>
     </form>
 </div>

@@ -2,11 +2,20 @@
 
 {% block title %}个人信息 - 江南大学实验室设备管理系统{% endblock %}
 
-
+{% block sidebar %}
+<div class="sidebar">
+    <a href="{% url 'user_home' %}">首页</a>
+    <a href="{% url 'device_list' %}">设备查询</a>
+    <a href="{% url 'booking_apply' %}">预约申请</a>
+    <a href="{% url 'my_booking' %}">我的预约</a>
+    <a href="{% url 'user_profile' %}">个人信息</a>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="card">
     <h2>个人信息管理</h2>
+    <!-- 错误/成功提示 -->
     {% if messages %}
         {% for message in messages %}
             <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
@@ -55,6 +64,7 @@
                            style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;"
                            placeholder="请输入学院/单位名称">
                 </div>
+                <!-- 【动态显示】不同用户类型显示不同字段 -->
                 {% if user_info.user_type == 'student' %}
                     <div class="form-group" style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 5px;">专业</label>
@@ -104,14 +114,17 @@
             </div>
         </div>
         <button type="submit" class="btn btn-success" style="padding: 8px 20px;">保存修改</button>
+        <!-- 跳转到修改密码页面 -->
         <button type="button" class="btn btn-secondary" style="margin-left: 10px; padding: 8px 20px;" 
                 onclick="window.location.href='{% url 'change_password' %}'">修改密码</button>
     </form>
     
+    <!-- 【动态显示】教师用户专属：指导学生列表 -->
     {% if user_info.user_type == 'teacher' %}
     <div style="margin-top: 40px;" id="teacher_student_list">
         <h3 style="margin-bottom: 10px;">指导学生列表管理</h3>
         
+        <!-- 操作按钮 -->
         <div style="margin-bottom: 15px;">
             <a href="{% url 'add_student' %}" class="btn btn-primary" style="padding: 8px 20px; margin-right: 10px;">
                 添加学生
@@ -119,6 +132,7 @@
             <button class="btn btn-secondary" style="padding: 8px 20px;">批量导入（Excel）</button>
         </div>
         
+        <!-- 学生列表 -->
         <table style="margin-top: 10px; width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="background-color: #f8f9fa;">
@@ -138,7 +152,6 @@
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ student.phone }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6; text-align: center;">
                         <a href="{% url 'edit_student' student.id %}" class="btn btn-primary btn-sm" style="padding: 4px 8px; margin-right: 5px;">编辑</a>
-                        
                         <form method="post" action="{% url 'remove_student' student.id %}" style="display: inline;" onsubmit="return confirm('确定要移除该学生吗？')">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-danger btn-sm" style="padding: 4px 8px;">移除</button>

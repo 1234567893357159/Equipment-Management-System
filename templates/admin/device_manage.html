@@ -4,38 +4,43 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    <a href="{% url 'admin_home' %}">首页</a>
-    <a href="{% url 'booking_approve' %}">预约审批</a>
-    <a href="{% url 'device_manage' %}" class="active">设备管理</a>
-    <a href="{% url 'ledger:ledger_home' %}">台账</a>
-    <a href="{% url 'report_stat' %}">报表统计</a>
+    {% if is_admin %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}">预约审批</a>
+        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}">报表统计</a>
+    {% elif is_manager %}
+        <a href="{% url 'manager_home' %}">首页</a>
+        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
+        <a href="{% url 'user_manage' %}">用户管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'manager_report_stat' %}">报表统计</a>
+    {% else %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}">预约审批</a>
+        <a href="{% url 'device_manage' %}" class="active">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}">报表统计</a>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block content %}
+<!-- 增加锚点 top，用于取消按钮跳转 -->
 <div id="top" class="card">
     <h2>实验设备信息管理</h2>
-    
-    {% if messages %}
-        {% for message in messages %}
-            <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
-                {% if message.tags == 'success' %}background-color: #d4edda; color: #155724;{% endif %}
-                {% if message.tags == 'error' %}background-color: #f8d7da; color: #721c24;{% endif %}">
-                {{ message }}
-            </div>
-        {% endfor %}
-    {% endif %}
-
     <div style="margin-bottom: 20px;">
         <button class="btn btn-success" onclick="location.href='#add_device'">新增设备</button>
-        <button class="btn">导出设备台账</button>
-        
+        <!-- 搜索框：修改为表单提交，传递 keyword 参数 -->
         <form method="get" style="display: inline-block;">
             <input type="text" name="keyword" placeholder="输入设备编号/名称搜索" style="width: 300px; margin-left: 20px;" value="{{ keyword|default:'' }}">
             <button type="submit" class="btn">搜索</button>
         </form>
     </div>
 
+    <!-- 设备列表：替换模拟数据为真实数据库循环 -->
     <table>
         <thead>
             <tr>
@@ -57,42 +62,40 @@
                 <td>{{ device.manufacturer }}</td>
                 <td>{{ device.purchase_date|date:"Y-m-d" }}</td>
                 <td>{{ device.purpose }}</td>
+                <td>{{ device.status }}</td>
                 <td>
-                    <span class="badge {% if device.status == '可用' or device.status == 'available' %}badge-success{% else %}badge-danger{% endif %}">
-                        {{ device.get_status_display|default:device.status }}
-                    </span>
+                    {{ device.price_internal }}元/2小时（校内）<br>
+                    {{ device.price_external }}元/2小时（校外）
                 </td>
                 <td>
-                    <small>
-                        校内: {{ device.price_internal }}元/2h<br>
-                        校外: {{ device.price_external }}元/2h
-                    </small>
-                </td>
-                <td>
-                    <a href="{% url 'device_detail' pk=device.pk %}" class="btn btn-primary btn-sm">编辑</a>
+                    <!-- 1. 编辑按钮（保留） -->
+                    <a href="{% url 'device_detail' pk=device.pk %}" class="btn btn-primary">编辑</a>
                     
-                    {% if device.status == '可用' or device.status == 'available' %}
-                    <a href="{% url 'device_manage' %}?status_action=unavailable&pk={{ device.pk }}" class="btn btn-warning btn-sm">标记不可用</a>
+                    <!-- 2. 状态切换按钮：根据当前状态显示“标记不可用”或“标记可用” -->
+                    {% if device.status == '可用' %}
+                    <a href="{% url 'device_manage' %}?status_action=unavailable&pk={{ device.pk }}" class="btn btn-warning">标记不可用</a>
                     {% else %}
-                    <a href="{% url 'device_manage' %}?status_action=available&pk={{ device.pk }}" class="btn btn-success btn-sm">标记可用</a>
+                    <a href="{% url 'device_manage' %}?status_action=available&pk={{ device.pk }}" class="btn btn-success">标记可用</a>
                     {% endif %}
                     
-                    <a href="{% url 'device_delete' pk=device.pk %}" class="btn btn-danger btn-sm" onclick="return confirm('确定要删除设备【{{ device.device_code }}】吗？删除后将自动记录到台账报废清单！')">删除</a>
+                    <!-- 3. 删除按钮（新增，需确认弹窗防止误删） -->
+                    <a href="{% url 'device_delete' pk=device.pk %}" class="btn btn-danger" onclick="return confirm('确定要删除设备【{{ device.device_code }}】吗？删除后数据不可恢复！')">删除</a>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8" style="text-align: center; padding: 20px;">暂无设备数据</td>
+                <td colspan="8" class="text-center">暂无设备数据</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <div id="add_device" class="card" style="margin-top: 30px; border-top: 2px solid #28a745;">
+    <!-- 新增/编辑设备表单：保留原有逻辑，无需修改 -->
+    <div id="add_device" class="card" style="margin-top: 30px;">
         <h3>{% if edit_device_id_js %}编辑实验设备{% else %}新增实验设备{% endif %}</h3>
         <form method="post" id="deviceForm">
             {% csrf_token %}
-            <input type="hidden" name="device_id" value="{{ edit_device_id_js|default:'' }}">
+            <input type="hidden" name="device_id" id="device_id">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="form-group">
                     <label>{{ form.device_code.label }}</label>
@@ -127,11 +130,10 @@
                     {{ form.price_external }}
                 </div>
             </div>
-            <div style="margin-top: 20px;">
-                <button type="submit" class="btn btn-success">保存设备信息</button>
-                <button type="button" class="btn btn-secondary" onclick="location.href='#top'">取消</button>
-            </div>
+            <button type="submit" class="btn btn-success">保存设备信息</button>
+            <button type="button" class="btn" onclick="location.href='#top'">取消</button>
         </form>
     </div>
 </div>
+
 {% endblock %}

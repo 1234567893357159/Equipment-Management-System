@@ -416,105 +416,141 @@ def export_report_csv(request, report_id):
     wb.save(response)
     return response
 
+# 1. 管理员审批页面
 @login_required
 def booking_approve(request):
-    """设备预约审批视图（整合了您的多级审核与他人的类型筛选）"""
+    """设备预约审批（管理员）"""
+    # 校验是否是管理员/负责人
+    is_admin = request.user.groups.filter(name='设备管理员').exists()
+    is_manager = request.user.groups.filter(name='实验室负责人').exists()
+    if not is_admin and not is_manager:
+        messages.error(request, '你无审批权限！')
+        return redirect('manager_home')
+    
+    # 获取筛选条件
+    user_type_filter = request.GET.get('user_type', 'all')
+    
+    # 核心修改：管理员只看「待审批（pending）」的申请，不看「已批准待负责人审批（admin_approved）」的
+    if is_admin:
+        # 管理员仅审批：待审批的申请（移除 admin_approved）
+        bookings = Booking.objects.filter(
+            status='pending'  # 只保留待管理员审批的
+        ).order_by('-create_time')
+    else:
+        # 负责人仍只审批：管理员已批准的校外人员申请（admin_approved + external）
+        bookings = Booking.objects.filter(
+            status='admin_approved',
+            applicant__user_type='external'
+        ).order_by('-create_time')
+    
+    # 筛选用户类型
+    if user_type_filter != 'all':
+        if user_type_filter == 'student':
+            bookings = bookings.filter(applicant__user_type='student')
+        elif user_type_filter == 'teacher':
+            bookings = bookings.filter(applicant__user_type='teacher')
+        elif user_type_filter == 'external':
+            bookings = bookings.filter(applicant__user_type='external')
+    
+    # 处理审批操作（原有逻辑不变）
+    if request.method == 'POST':
+        # 单个审批
+        if 'approve' in request.POST:
+            booking_id = request.POST.get('approve')
+            handle_approval(request, booking_id, 'approve')
+        elif 'reject' in request.POST:
+            booking_id = request.POST.get('reject')
+            handle_approval(request, booking_id, 'reject')
+        
+        # 批量审批（简化版）
+        elif 'batch_approve' in request.POST or 'batch_reject' in request.POST:
+            booking_ids = request.POST.getlist('booking_ids')
+            action = 'approve' if 'batch_approve' in request.POST else 'reject'
+            for booking_id in booking_ids:
+                handle_approval(request, booking_id, action)
+        
+        return redirect('booking_approve')
+    
+    context = {
+        'bookings': bookings,
+        'user_type_filter': user_type_filter,
+        'is_admin': is_admin,
+        'is_manager': is_manager
+    }
+    return render(request, 'admin/booking_approve.html', context)
+
+def handle_approval(request, booking_id, action):
+    """处理审批逻辑（核心）"""
+    booking = get_object_or_404(Booking, id=booking_id)
     is_admin = request.user.groups.filter(name='设备管理员').exists()
     is_manager = request.user.groups.filter(name='实验室负责人').exists()
     
-    if not is_admin and not is_manager:
-        messages.error(request, '您没有审批权限！')
-        return redirect('admin_home')
-
-    # 保留他人的用户类型筛选功能
-    user_type_filter = request.GET.get('user_type', 'all')
-
-    # 您的核心筛选逻辑：管理员看待审，负责人看校外待终审
+    # 1. 管理员审批逻辑
     if is_admin:
-        bookings = Booking.objects.filter(status='pending').order_by('-create_time')
-    else:
-        bookings = Booking.objects.filter(status='admin_approved', applicant__user_type='external').order_by('-create_time')
-
-    if user_type_filter != 'all':
-        bookings = bookings.filter(applicant__user_type=user_type_filter)
-
-    # 处理审批提交
-    if request.method == 'POST':
-        if 'approve' in request.POST:
-            handle_approval(request, request.POST.get('approve'), 'approve')
-        elif 'reject' in request.POST:
-            handle_approval(request, request.POST.get('reject'), 'reject')
-        elif 'batch_approve' in request.POST or 'batch_reject' in request.POST:
-            ids = request.POST.getlist('booking_ids')
-            action = 'approve' if 'batch_approve' in request.POST else 'reject'
-            for b_id in ids:
-                handle_approval(request, b_id, action)
-                
-        return redirect('booking_approve')
-
-    return render(request, 'admin/booking_approve.html', {
-        'bookings': bookings,
-        'is_admin': is_admin,
-        'is_manager': is_manager,
-        'user_type_filter': user_type_filter
-    })
-
-def handle_approval(request, booking_id, action):
-    """核心审批处理逻辑：整合了审批记录与台账记录"""
-    booking = get_object_or_404(Booking, id=booking_id)
-    is_admin = request.user.groups.filter(name='设备管理员').exists()
-    
-    # 1. 您的状态流转逻辑
-    if action == 'approve':
-        if is_admin:
-            # 如果是校内人员，管理员审批即通过；校外人员则转为待负责人审
+        if action == 'approve':
+            # 学生/教师：直接审批通过
             if booking.applicant.user_type in ['student', 'teacher']:
                 booking.status = 'manager_approved'
-                create_borrow_ledger(booking, request.user) # 合并台账功能
+                # 审批通过时创建借出台账记录
+                create_borrow_ledger(booking, request.user)
+            # 校外人员：需负责人审批
             else:
-                booking.status = 'admin_approved' 
+                booking.status = 'admin_approved'
+            approval_level = 'admin'
         else:
+            booking.status = 'admin_rejected'
+            approval_level = 'admin'
+    
+    # 2. 负责人审批逻辑（仅校外人员）
+    elif is_manager:
+        if action == 'approve':
             booking.status = 'manager_approved'
-            create_borrow_ledger(booking, request.user) # 合并台账功能
-    else:
-        booking.status = 'admin_rejected' if is_admin else 'manager_rejected'
-
+            # 审批通过时创建借出台账记录
+            create_borrow_ledger(booking, request.user)
+        else:
+            booking.status = 'manager_rejected'
+        approval_level = 'manager'
+    
+    # 保存预约状态
     booking.save()
-
-    # 2. 您的备注获取逻辑
-    comment_key = f'comment_{booking.booking_code}'
-    comment_val = request.POST.get(comment_key, '')
-    if not comment_val:
-        comment_val = '批量操作' if 'batch' in request.body.decode() else '无备注'
-
-    # 3. 记录审批日志
+    
+    # 记录审批日志
     ApprovalRecord.objects.create(
         booking=booking,
         approver=request.user,
-        approval_level='admin' if is_admin else 'manager',
+        approval_level=approval_level,
         action=action,
-        comment=comment_val
+        comment=request.POST.get(f'comment_{booking.booking_code}', '')  # 可扩展审批备注
     )
     
+    # 提示信息
     action_text = '批准' if action == 'approve' else '拒绝'
-    messages.success(request, f'已{action_text}预约：{booking.booking_code}')
+    messages.success(request, f'已{action_text}预约申请：{booking.booking_code}')
 
 def create_borrow_ledger(booking, operator):
-    """他人的台账记录功能：审批通过时自动创建"""
+    """审批通过时创建借出台账记录"""
     try:
+        # 计算预期归还时间（基于预约日期，假设借用2小时）
+        expected_return_date = booking.booking_date  # 可以根据实际需求调整
+        
+        # 创建借出台账记录
         DeviceLedger.objects.create(
             device=booking.device,
             device_name=booking.device.model,
             user=booking.applicant,
             operation_type='borrow',
             operation_date=timezone.now(),
-            expected_return_date=booking.booking_date,
+            expected_return_date=expected_return_date,
             status_after_operation='unavailable',
-            description=f'预约编号：{booking.booking_code}，用途：{booking.purpose or "未填写"}',
+            description=f'预约编号：{booking.booking_code}，用途：{booking.purpose or "无"}',
             operator=operator
         )
-        # 更新设备状态
+        
+        # 更新设备状态为不可用
         booking.device.status = 'unavailable'
         booking.device.save()
+        
+        print(f'已为预约 {booking.booking_code} 创建借出台账记录')
+        
     except Exception as e:
-        print(f"台账记录失败: {e}")
+        print(f'创建台账记录失败：{str(e)}')

@@ -31,6 +31,7 @@
 <div class="card">
     <h2>设备使用报表统计</h2>
     
+    <!-- 自动生成说明 -->
     <div style="margin-bottom: 20px; padding: 15px; background-color: #e7f3ff; border-left: 4px solid #3498db; border-radius: 4px;">
         <h4 style="margin-top: 0; color: #2980b9;">📅 报表系统说明</h4>
         <p style="margin: 5px 0; color: #555; line-height: 1.6; font-size: 14px;">
@@ -39,7 +40,8 @@
             • <strong>报表清理</strong>：系统会自动清理超过30天的历史报表记录。
         </p>
     </div>
-
+    
+    <!-- 手动生成报表表单 -->
     <div style="margin-bottom: 30px; padding: 20px; background-color: #f5f5f5; border-radius: 5px;">
         <h3 style="margin-bottom: 15px;">🔧 手动生成报表</h3>
         <form method="post" id="report_form">
@@ -47,11 +49,11 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: end;">
                 <div>
                     <label style="display: block; margin-bottom: 5px;">报表类型：</label>
-                    <select name="report_type" id="report_type_select" class="form-control" style="width: 100%;">
+                    <select name="report_type" class="form-control" required style="width: 100%;" id="report_type_select">
                         <option value="week">周报表</option>
-                        <option value="month" selected>月报表</option>
+                        <option value="month">月报表</option>
                         <option value="year">年报表</option>
-                        <option value="custom">自定义时间段</option>
+                        <option value="custom">自定义时间段报表</option>
                     </select>
                 </div>
                 <div id="date_input_div">
@@ -70,12 +72,18 @@
                     <button type="submit" name="generate" class="btn btn-primary">生成报表</button>
                 </div>
             </div>
-            <small style="color: #666; display: block; margin-top: 8px;" id="date_hint">月报表请选择对应月份</small>
+            <div>
+                <button type="submit" name="generate" class="btn btn-primary">生成报表</button>
+            </div>
         </form>
     </div>
 
+    <!-- 已生成报表列表 -->
     <div style="margin-bottom: 30px;">
-        <h3>📋 历史报表记录</h3>
+        <h3>📋 已生成报表列表</h3>
+        <p style="color: #666; margin-bottom: 10px; font-size: 14px;">
+            共 {{ reports|length }} 条报表记录（仅显示最近20条，超过30天的报表会自动清理）
+        </p>
         {% if reports %}
         <div class="table-responsive">
             <table class="table table-striped table-hover">
@@ -117,12 +125,11 @@
             </table>
         </div>
         {% else %}
-        <p style="color: #999; text-align: center; padding: 20px;">暂无报表记录，请点击上方按钮生成。</p>
+        <p style="color: #666;">暂无已生成的报表</p>
         {% endif %}
     </div>
 
-    <hr style="border: 0; border-top: 1px solid #eee; margin: 40px 0;">
-
+    <!-- 报表详情展示 -->
     {% if current_report %}
     <div id="report_detail">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -135,18 +142,20 @@
             <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
                 <div style="color: #7f8c8d; font-size: 12px;">总预约次数</div>
                 <div style="font-size: 24px; font-weight: bold; color: #3498db;">{{ data.summary.total_bookings }}</div>
+                <div style="color: #666;">总预约次数</div>
             </div>
             <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
                 <div style="color: #7f8c8d; font-size: 12px;">已通过审批 (最终通过)</div>
                 <div style="font-size: 24px; font-weight: bold; color: #2ecc71;">{{ data.summary.approved_count }}</div>
+                <div style="color: #666;">已审批通过</div>
             </div>
             <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
                 <div style="color: #7f8c8d; font-size: 12px;">待处理 (含指导教师/管理员)</div>
                 <div style="font-size: 24px; font-weight: bold; color: #f39c12;">{{ data.summary.pending_count }}</div>
             </div>
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;">
-                <div style="color: #7f8c8d; font-size: 12px;">校外总收入</div>
-                <div style="font-size: 24px; font-weight: bold; color: #e74c3c;">￥{{ data.summary.total_revenue|floatformat:2 }}</div>
+            <div style="padding: 15px; background-color: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <div style="font-size: 24px; font-weight: bold; color: #f39c12;">{{ data.summary.total_devices }}</div>
+                <div style="color: #666;">设备总数</div>
             </div>
         </div>
 
@@ -208,11 +217,8 @@
         </div>
         {% endwith %}
     </div>
-    {% else %}
-    <div style="text-align: center; color: #999; padding: 40px;">
-        <p>请从上方列表中选择报表查看详情，或填写日期生成新报表。</p>
-    </div>
     {% endif %}
+</div>
 
     <script>
         // 修复4：完善日期输入框的切换逻辑
@@ -260,7 +266,26 @@
                     alert('自定义报表必须选择起止日期！');
                 }
             }
-        });
-    </script>
-</div>
+        }
+    });
+    
+    // 表单提交验证
+    document.getElementById('report_form').addEventListener('submit', function(e) {
+        const reportType = document.getElementById('report_type_select').value;
+        if (reportType === 'custom') {
+            const startDate = document.getElementById('start_date').value;
+            const endDate = document.getElementById('end_date').value;
+            if (!startDate || !endDate) {
+                e.preventDefault();
+                alert('自定义时间段报表需要填写起始日期和结束日期！');
+                return false;
+            }
+            if (new Date(startDate) > new Date(endDate)) {
+                e.preventDefault();
+                alert('起始日期不能晚于结束日期！');
+                return false;
+            }
+        }
+    });
+</script>
 {% endblock %}

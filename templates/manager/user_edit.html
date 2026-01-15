@@ -4,11 +4,27 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    <a href="{% url 'manager_home' %}">首页</a>
-    <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
-    <a href="{% url 'user_manage' %}">用户管理</a>
-    <a href="{% url 'ledger:ledger_home' %}">台账</a>
-    <a href="{% url 'manager_report_stat' %}">报表统计</a>
+    {% if is_admin %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}">预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}">报表统计</a>
+    {% elif is_manager %}
+        <a href="{% url 'manager_home' %}">首页</a>
+        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'user_manage' %}" class="active">用户管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'manager_report_stat' %}">报表统计</a>
+    {% else %}
+        <a href="{% url 'manager_home' %}">首页</a>
+        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'user_manage' %}" class="active">用户管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'manager_report_stat' %}">报表统计</a>
+    {% endif %}
 </div>
 {% endblock %}
 
@@ -45,6 +61,7 @@
                 <label>{{ form.phone.label }}</label>
                 {{ form.phone }}
             </div>
+            <!-- 【修改1】优化密码重置字段提示，适配编号作为密码 -->
             <div class="form-group">
                 <label>{{ form.reset_password.label }}</label>
                 {{ form.reset_password }}
@@ -53,10 +70,12 @@
                     初始密码为用户编号：<b>{{ user.user_code }}</b>
                 </small>
             </div>
+            <!-- 调整：借用资格字段单独一行 -->
             <div class="form-group" style="grid-column: span 3;">
                 <label>{{ form.is_active.label }}</label>
                 {{ form.is_active }}
             </div>
+            <!-- 【新增】快速重置密码为用户编号的选项 -->
             <div class="form-group" style="grid-column: span 3;">
                 <label style="display: block; margin-bottom: 5px;">快速重置密码</label>
                 <input type="checkbox" name="reset_to_code" id="reset_to_code">

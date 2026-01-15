@@ -5,7 +5,8 @@
 {% block sidebar %}
 <div class="sidebar">
     <a href="{% url 'manager_home' %}">首页</a>
-    <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+    <a href="{% url 'manager_booking_approve' %}" class="active">校外人员预约审批</a>
+    <a href="{% url 'device_manage' %}">设备管理</a>
     <a href="{% url 'user_manage' %}">用户管理</a>
     <a href="{% url 'ledger:ledger_home' %}">台账</a>
     <a href="{% url 'manager_report_stat' %}">报表统计</a>
@@ -25,6 +26,7 @@
         {% endfor %}
     {% endif %}
 
+    <!-- 用户类型筛选 -->
     <div style="margin-bottom: 20px;">
         <a href="{% url 'booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
         <a href="{% url 'booking_approve' %}?user_type=teacher" class="btn {% if user_type_filter == 'teacher' %}btn-primary{% else %}btn-secondary{% endif %}">校内教师申请</a>

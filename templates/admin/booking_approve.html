@@ -4,18 +4,32 @@
 
 {% block sidebar %}
 <div class="sidebar">
-    <a href="{% url 'admin_home' %}">首页</a> 
-    <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
-    <a href="{% url 'device_manage' %}">设备管理</a>
-    <a href="{% url 'ledger:ledger_home' %}">台账</a>
-    <a href="{% url 'report_stat' %}">报表统计</a>
+    {% if is_admin %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}">报表统计</a>
+    {% elif is_manager %}
+        <a href="{% url 'manager_home' %}">首页</a>
+        <a href="{% url 'manager_booking_approve' %}">校外人员预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'user_manage' %}">用户管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'manager_report_stat' %}">报表统计</a>
+    {% else %}
+        <a href="{% url 'admin_home' %}">首页</a>
+        <a href="{% url 'booking_approve' %}" class="active">预约审批</a>
+        <a href="{% url 'device_manage' %}">设备管理</a>
+        <a href="{% url 'ledger:ledger_home' %}">台账</a>
+        <a href="{% url 'report_stat' %}">报表统计</a>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="card">
     <h2>设备预约申请审批</h2>
-    
     {% if messages %}
         {% for message in messages %}
             <div style="padding: 10px; margin: 15px 0; border-radius: 4px; 
@@ -26,23 +40,16 @@
         {% endfor %}
     {% endif %}
 
-    {% if is_admin %}
+    <!-- 用户类型筛选 -->
     <div style="margin-bottom: 20px;">
-        <a href="{% url 'booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' or not user_type_filter %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
+        <a href="{% url 'booking_approve' %}?user_type=all" class="btn {% if user_type_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">全部待审批</a>
         <a href="{% url 'booking_approve' %}?user_type=teacher" class="btn {% if user_type_filter == 'teacher' %}btn-primary{% else %}btn-secondary{% endif %}">校内教师申请</a>
         <a href="{% url 'booking_approve' %}?user_type=student" class="btn {% if user_type_filter == 'student' %}btn-primary{% else %}btn-secondary{% endif %}">校内学生申请</a>
         <a href="{% url 'booking_approve' %}?user_type=external" class="btn {% if user_type_filter == 'external' %}btn-primary{% else %}btn-secondary{% endif %}">校外人员申请</a>
     </div>
-    {% elif is_manager %}
-    <div style="margin-bottom: 20px; padding: 10px; background-color: #e9ecef; border-left: 5px solid #17a2b8;">
-        <strong>💡 提示：</strong> 您当前正在审核由管理员初审通过的 <strong>校外人员</strong> 预约申请。
-    </div>
-    {% endif %}
 
     <form method="post">
         {% csrf_token %}
-        <input type="hidden" name="user_type_filter" value="{{ user_type_filter }}">
-        
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="background-color: #f8f9fa;">
@@ -54,7 +61,6 @@
                     <th style="padding: 8px; border: 1px solid #dee2e6;">预约时段</th>
                     <th style="padding: 8px; border: 1px solid #dee2e6;">设备状态</th>
                     <th style="padding: 8px; border: 1px solid #dee2e6;">当前状态</th>
-                    <th style="padding: 8px; border: 1px solid #dee2e6;">审批备注</th> 
                     <th style="padding: 8px; border: 1px solid #dee2e6;">审批操作</th>
                 </tr>
             </thead>
@@ -67,19 +73,15 @@
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_code }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.applicant.name }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">
-                        {{ booking.applicant.get_user_type_display }}
+                        {% if booking.applicant.user_type == 'student' %}校内学生
+                        {% elif booking.applicant.user_type == 'teacher' %}校内教师
+                        {% else %}校外人员{% endif %}
                     </td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.device_code }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.booking_date }} {{ booking.time_slot }}</td>
-                    
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.device.get_status_display }}</td>
                     <td style="padding: 8px; border: 1px solid #dee2e6;">{{ booking.get_status_display }}</td>
-
                     <td style="padding: 8px; border: 1px solid #dee2e6;">
-                        <input type="text" name="comment_{{ booking.booking_code }}" placeholder="输入意见" style="width: 100%; padding: 4px;">
-                    </td>
-
-                    <td style="padding: 8px; border: 1px solid #dee2e6; white-space: nowrap;">
                         {% if is_admin %}
                             <button type="submit" name="approve" value="{{ booking.id }}" class="btn btn-success btn-sm">批准</button>
                             <button type="submit" name="reject" value="{{ booking.id }}" class="btn btn-danger btn-sm">拒绝</button>
@@ -91,7 +93,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="10" style="padding: 8px; border: 1px solid #dee2e6; text-align: center;">暂无待审批的申请</td>
+                    <td colspan="9" style="padding: 8px; border: 1px solid #dee2e6; text-align: center;">暂无待审批的申请</td>
                 </tr>
                 {% endfor %}
             </tbody>
