@@ -445,7 +445,7 @@ def export_device_ledger_csv(request):
     # 设置表头
     headers = [
         '设备编号', '型号', '购入时间', '生产厂商', '实验用途', 
-        '时段可用状态', '校内租用价格（元/2小时）', '校外租用价格（元/2小时）', '创建时间', '更新时间'
+        '设备状态', '校内租用价格（元/2小时）', '校外租用价格（元/2小时）', '创建时间', '更新时间'
     ]
     ws.append(headers)
     
@@ -462,8 +462,9 @@ def export_device_ledger_csv(request):
 
     # 写入数据
     for device in devices:
+        # purchase_date 是 DateField，已经是 date 对象，不需要调用 .date()
+        purchase_date = device.purchase_date if device.purchase_date else None
         # 转换datetime为naive datetime（移除时区信息）
-        purchase_date = device.purchase_date.date() if device.purchase_date else None
         created_at = device.created_at.replace(tzinfo=None) if device.created_at else None
         updated_at = device.updated_at.replace(tzinfo=None) if device.updated_at else None
         
